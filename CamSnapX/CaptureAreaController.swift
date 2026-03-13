@@ -32,7 +32,7 @@ final class CaptureAreaController: NSObject, CaptureAreaOverlayViewDelegate {
     }
 
     func startCapture() {
-        startAreaSelection()
+        startSystemCapture(arguments: ["-i", "-c"])
     }
 
     func capturePreviousArea() {
@@ -40,6 +40,14 @@ final class CaptureAreaController: NSObject, CaptureAreaOverlayViewDelegate {
         Task { [weak self] in
             await self?.captureAndShow(rect: rect)
         }
+    }
+
+    func captureFullScreen() {
+        startSystemCapture(arguments: ["-c"])
+    }
+
+    func captureWindow() {
+        startSystemCapture(arguments: ["-i", "-w", "-c"])
     }
 
     private func startAreaSelection() {
@@ -65,6 +73,23 @@ final class CaptureAreaController: NSObject, CaptureAreaOverlayViewDelegate {
             window.contentView = view
             window.makeKeyAndOrderFront(nil)
             overlayWindows.append(window)
+        }
+    }
+
+    private func startSystemCapture(arguments: [String]) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = arguments
+        process.terminationHandler = { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.handleClipboardCapture()
+            }
+        }
+
+        do {
+            try process.run()
+        } catch {
+            showCaptureError(error)
         }
     }
 
@@ -98,8 +123,22 @@ final class CaptureAreaController: NSObject, CaptureAreaOverlayViewDelegate {
         }
 
         let image = NSImage(cgImage: cgImage, size: NSSize(width: rect.width, height: rect.height))
+        showPreviewForImage(image, screen: screenForRect(rect))
+    }
+
+    private func handleClipboardCapture() {
+        let pasteboard = NSPasteboard.general
+        guard let images = pasteboard.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage],
+              let image = images.first else {
+            return
+        }
+
+        let screen = screenForPoint(NSEvent.mouseLocation)
+        showPreviewForImage(image, screen: screen)
+    }
+
+    private func showPreviewForImage(_ image: NSImage, screen: NSScreen?) {
         let fileURL = saveImageToDisk(image)
-        let screen = screenForRect(rect)
         showPreview(with: image, fileURL: fileURL, on: screen)
     }
 
@@ -232,6 +271,10 @@ final class CaptureAreaController: NSObject, CaptureAreaOverlayViewDelegate {
     private func screenForRect(_ rect: CGRect) -> NSScreen? {
         let center = CGPoint(x: rect.midX, y: rect.midY)
         return NSScreen.screens.first { $0.frame.contains(center) } ?? NSScreen.main
+    }
+
+    private func screenForPoint(_ point: CGPoint) -> NSScreen? {
+        return NSScreen.screens.first { $0.frame.contains(point) } ?? NSScreen.main
     }
 
     private func copyToPasteboard(image: NSImage, fileURL: URL?) {

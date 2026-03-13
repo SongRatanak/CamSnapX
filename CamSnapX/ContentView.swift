@@ -35,37 +35,43 @@ struct ContentView: View {
                 .opacity(0)
                 .frame(width: 0, height: 0)
 
-                MenuRowButton("All-In-One", systemImage: "square.grid.2x2") { }
-                MenuRowButton("Capture Area", systemImage: "rectangle.inset.fill") {
+                MenuRowButton("All-In-One", systemImage: "sparkles.rectangle.stack") { }
+                MenuRowButton("Capture Area", systemImage: "crop") {
                     CaptureAreaController.shared.startCapture()
                     dismiss()
                 }
                 if hasPreviousArea {
-                    MenuRowButton("Capture Previous Area", systemImage: "arrow.uturn.backward.square") {
+                    MenuRowButton("Capture Previous Area", systemImage: "arrow.uturn.backward.circle") {
                         CaptureAreaController.shared.capturePreviousArea()
                         dismiss()
                     }
                 }
-                MenuRowButton("Capture Fullscreen", systemImage: "rectangle.fill") { }
-                MenuRowButton("Capture Window", systemImage: "macwindow") { }
-                MenuRowButton("Scrolling Capture", systemImage: "arrow.up.and.down") { }
+                MenuRowButton("Capture Fullscreen", systemImage: "rectangle.inset.fill") {
+                    CaptureAreaController.shared.captureFullScreen()
+                    dismiss()
+                }
+                MenuRowButton("Capture Window", systemImage: "macwindow.on.rectangle") {
+                    CaptureAreaController.shared.captureWindow()
+                    dismiss()
+                }
+                MenuRowButton("Scrolling Capture", systemImage: "arrow.up.and.down.square") { }
                 MenuRowButton("Self-Timer", systemImage: "timer") { }
                 MenuRowButton("Capture Text (OCR)", systemImage: "text.viewfinder") { }
-                MenuRowButton("Record Screen", systemImage: "video.fill") { }
+                MenuRowButton("Record Screen", systemImage: "record.circle") { }
                 Divider()
-                MenuRowButton("Hide Desktop Icons", systemImage: "doc.badge.gearshape") { }
+                MenuRowButton("Hide Desktop Icons", systemImage: "eye.slash") { }
                 Divider()
                 MenuRowButton("Open...", systemImage: "folder") { }
-                MenuRowButton("Pin to the Screen...", systemImage: "pin.fill") { }
+                MenuRowButton("Pin to the Screen...", systemImage: "pin") { }
                 Divider()
-                MenuRowButton("Capture History...", systemImage: "clock.fill") {
+                MenuRowButton("Capture History...", systemImage: "clock.arrow.circlepath") {
                     isShowingHistory = true
                 }
-                MenuRowButton("About CamSnapX...", systemImage: "info.circle.fill") { }
-                MenuRowButton("Check for Updates...", systemImage: "arrow.up.square") { }
-                MenuRowButton("Settings...", systemImage: "gearshape.fill") { }
+                MenuRowButton("About CamSnapX...", systemImage: "info.circle") { }
+                MenuRowButton("Check for Updates...", systemImage: "arrow.triangle.2.circlepath") { }
+                MenuRowButton("Settings...", systemImage: "gearshape") { }
                 Divider()
-                MenuRowButton("Quit", systemImage: "xmark.circle.fill") {
+                MenuRowButton("Quit", systemImage: "power") {
                     NSApplication.shared.terminate(nil)
                 }
             }

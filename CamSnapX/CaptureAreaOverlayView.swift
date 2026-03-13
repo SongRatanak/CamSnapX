@@ -167,3 +167,4 @@ final class CaptureAreaOverlayView: NSView {
         path.stroke()
     }
 }
+
