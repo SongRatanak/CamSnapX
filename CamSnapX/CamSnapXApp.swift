@@ -10,8 +10,10 @@ import SwiftUI
 @main
 struct CamSnapXApp: App {
     var body: some Scene {
-        WindowGroup {
+        MenuBarExtra("CamSnapX", systemImage: "camera") {
             ContentView()
         }
+        .menuBarExtraStyle(.window)
+
     }
 }
