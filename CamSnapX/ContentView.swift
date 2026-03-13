@@ -34,7 +34,10 @@ struct ContentView: View {
                 .opacity(0)
                 .frame(width: 0, height: 0)
 
-                MenuRowButton("All-In-One", systemImage: "sparkles.rectangle.stack") { }
+                MenuRowButton("All-In-One", systemImage: "sparkles.rectangle.stack") {
+                    AllInOneOverlayController.shared.show()
+                    dismiss()
+                }
                 MenuRowButton("Capture Area", systemImage: "crop") {
                     CaptureAreaController.shared.startCapture()
                     dismiss()
@@ -54,7 +57,6 @@ struct ContentView: View {
                     dismiss()
                 }
                 MenuRowButton("Scrolling Capture", systemImage: "arrow.up.and.down.square") { }
-                MenuRowButton("Self-Timer", systemImage: "timer") { }
                 MenuRowButton("Capture Text (OCR)", systemImage: "text.viewfinder") { }
                 MenuRowButton("Record Screen", systemImage: "record.circle") { }
                 Divider()
@@ -83,7 +85,7 @@ struct ContentView: View {
             dismiss()
         }
         .onChange(of: controlActiveState) {
-            if controlActiveState != .key {
+            if controlActiveState == .inactive {
                 dismiss()
             }
         }

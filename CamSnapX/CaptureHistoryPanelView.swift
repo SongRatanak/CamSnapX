@@ -18,7 +18,6 @@ struct CaptureHistoryPanelView: View {
     @ObservedObject var store: CaptureHistoryStore
 
     @State private var selectedTab: HistoryTab = .all
-    @State private var keepHistoryDays: Int? = 3
 
     var body: some View {
         ZStack {
@@ -41,7 +40,7 @@ struct CaptureHistoryPanelView: View {
             }
             .padding(16)
         }
-        .frame(width: 1400, height: 240)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var header: some View {
@@ -53,19 +52,42 @@ struct CaptureHistoryPanelView: View {
             Spacer()
 
             Menu {
-                Button("Never") { keepHistoryDays = nil }
-                Button("1 day") { keepHistoryDays = 1 }
-                Button("3 days") { keepHistoryDays = 3 }
-                Button("1 week") { keepHistoryDays = 7 }
-                Button("1 month") { keepHistoryDays = 30 }
+                Button(action: { store.retentionDays = nil }) {
+                    retentionLabel("Never", isSelected: store.retentionDays == nil)
+                }
+                Button(action: { store.retentionDays = 1 }) {
+                    retentionLabel("1 day", isSelected: store.retentionDays == 1)
+                }
+                Button(action: { store.retentionDays = 3 }) {
+                    retentionLabel("3 days", isSelected: store.retentionDays == 3)
+                }
+                Button(action: { store.retentionDays = 7 }) {
+                    retentionLabel("1 week", isSelected: store.retentionDays == 7)
+                }
+                Button(action: { store.retentionDays = 30 }) {
+                    retentionLabel("1 month", isSelected: store.retentionDays == 30)
+                }
                 Divider()
-                Button("Clear History…") { store.clear() }
+                Button(action: { store.clearWithConfirmation() }) {
+                    Text("Clear History…")
+                        .foregroundStyle(.red)
+                }
             } label: {
                 Image(systemName: "ellipsis.circle")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(6)
                     .background(Color.white.opacity(0.08), in: Circle())
+            }
+        }
+    }
+
+    private func retentionLabel(_ title: String, isSelected: Bool) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            if isSelected {
+                Image(systemName: "checkmark")
             }
         }
     }
@@ -93,7 +115,9 @@ struct CaptureHistoryPanelView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
                 ForEach(filteredItems) { item in
-                    HistoryCard(item: item)
+                    HistoryCard(item: item) {
+                        CaptureAreaController.shared.showPreview(for: item.fileURL)
+                    }
                 }
 
                 if filteredItems.isEmpty {
@@ -120,12 +144,14 @@ struct CaptureHistoryPanelView: View {
 
 private struct HistoryCard: View {
     let item: CaptureHistoryItem
+    let onRestore: () -> Void
 
     @State private var thumbnail: NSImage?
+    @State private var isHovering = false
 
     var body: some View {
         VStack(spacing: 10) {
-            ZStack(alignment: .bottomTrailing) {
+            ZStack {
                 if let thumbnail {
                     Image(nsImage: thumbnail)
                         .resizable()
@@ -138,12 +164,23 @@ private struct HistoryCard: View {
                         .frame(width: 170, height: 102)
                 }
 
-                Image(systemName: "arrowshape.turn.up.left")
-                    .font(.system(size: 12, weight: .semibold))
+                if isHovering {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.black.opacity(0.35))
+                        .frame(width: 170, height: 102)
+
+                    Button {
+                        onRestore()
+                    } label: {
+                        Label("Restore", systemImage: "arrow.uturn.backward")
+                            .font(.custom("Avenir Next Demi Bold", size: 11))
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 10)
+                            .background(Color.white.opacity(0.2), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
                     .foregroundStyle(.white)
-                    .padding(6)
-                    .background(Color.blue.opacity(0.85), in: Circle())
-                    .padding(8)
+                }
             }
 
             Text(relativeDateString(from: item.createdAt))
@@ -151,6 +188,11 @@ private struct HistoryCard: View {
                 .foregroundStyle(.white.opacity(0.7))
         }
         .onAppear { loadThumbnail() }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovering = hovering
+            }
+        }
     }
 
     private func loadThumbnail() {

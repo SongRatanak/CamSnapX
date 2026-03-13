@@ -44,6 +44,12 @@ final class CaptureAreaController: NSObject {
         startSystemCapture(arguments: ["-i", "-w", "-c"])
     }
 
+    func showPreview(for fileURL: URL) {
+        guard let image = NSImage(contentsOf: fileURL) else { return }
+        let screen = screenForPoint(NSEvent.mouseLocation)
+        showPreview(with: image, fileURL: fileURL, on: screen)
+    }
+
     private func startSystemCapture(arguments: [String]) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")

@@ -13,21 +13,20 @@ final class CaptureHistoryPanelController: NSObject, NSWindowDelegate {
     static let shared = CaptureHistoryPanelController()
 
     private var panel: NSPanel?
-    private let baseSize = NSSize(width: 1400, height: 240)
+    private let baseSize = NSSize(width: 1200, height: 240)
     private var globalMonitor: Any?
     private var localMonitor: Any?
 
     func hide() {
-        panel?.orderOut(nil)
+        guard let panel else { return }
+        hidePanel(panel: panel)
         removeEventMonitors()
     }
 
     func show(store: CaptureHistoryStore, screen: NSScreen? = nil) {
         let resolvedScreen = screen ?? screenForMouse()
         if let panel {
-            position(panel: panel, on: resolvedScreen ?? NSScreen.main)
-            panel.orderFrontRegardless()
-            NSApp.activate(ignoringOtherApps: true)
+            showPanel(panel: panel, on: resolvedScreen ?? NSScreen.main)
             installEventMonitors()
             return
         }
@@ -54,24 +53,22 @@ final class CaptureHistoryPanelController: NSObject, NSWindowDelegate {
 
         panel.contentView = hostingView
 
-        panel.orderFrontRegardless()
-        NSApp.activate(ignoringOtherApps: true)
         installEventMonitors()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self, weak panel] in
             guard let panel else { return }
             let screen = resolvedScreen ?? self?.screenForMouse() ?? NSScreen.main
-            self?.position(panel: panel, on: screen, animated: true)
+            self?.showPanel(panel: panel, on: screen)
         }
 
         self.panel = panel
     }
 
-    private func position(panel: NSPanel, on screen: NSScreen?, animated: Bool = false) {
+    private func position(panel: NSPanel, on screen: NSScreen?) -> (targetOrigin: NSPoint, panelSize: NSSize)? {
         guard let screen else {
             panel.setContentSize(baseSize)
             panel.center()
-            return
+            return nil
         }
 
         let maxWidth = max(420, screen.visibleFrame.width - 24)
@@ -83,20 +80,24 @@ final class CaptureHistoryPanelController: NSObject, NSWindowDelegate {
         let minX = screen.visibleFrame.minX + 12
         let maxX = screen.visibleFrame.maxX - panelSize.width - 12
         let clampedX = max(minX, min(centeredX, maxX))
-        let targetTopLeft = NSPoint(x: clampedX, y: screen.visibleFrame.maxY - topMargin)
-        if animated {
-            let startTopLeft = NSPoint(x: targetTopLeft.x, y: screen.visibleFrame.maxY + panelSize.height + 8)
-            panel.setFrameTopLeftPoint(startTopLeft)
+        let targetOrigin = NSPoint(
+            x: clampedX,
+            y: screen.visibleFrame.maxY - topMargin - panelSize.height
+        )
+        return (targetOrigin, panelSize)
+    }
+
+    private func showPanel(panel: NSPanel, on screen: NSScreen?) {
+        guard let layout = position(panel: panel, on: screen) else {
             panel.orderFrontRegardless()
             NSApp.activate(ignoringOtherApps: true)
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.25
-                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                panel.animator().setFrameTopLeftPoint(targetTopLeft)
-            }
-        } else {
-            panel.setFrameTopLeftPoint(targetTopLeft)
+            return
         }
+
+        panel.setFrameOrigin(layout.targetOrigin)
+        panel.alphaValue = 1
+        panel.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func screenForMouse() -> NSScreen? {
@@ -107,6 +108,10 @@ final class CaptureHistoryPanelController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         panel = nil
         removeEventMonitors()
+    }
+
+    private func hidePanel(panel: NSPanel) {
+        panel.orderOut(nil)
     }
 
     private func installEventMonitors() {
