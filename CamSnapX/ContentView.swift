@@ -16,6 +16,7 @@ struct ContentView: View {
     @StateObject private var historyStore = CaptureHistoryStore.shared
     @State private var draggedImage: NSImage? = nil
     @State private var isDragOver = false
+    @State private var hasPreviousArea = CaptureAreaController.shared.hasPreviousArea
 
     var body: some View {
         ZStack {
@@ -39,7 +40,12 @@ struct ContentView: View {
                     CaptureAreaController.shared.startCapture()
                     dismiss()
                 }
-                MenuRowButton("Capture Previous Area", systemImage: "arrow.uturn.backward.square") { }
+                if hasPreviousArea {
+                    MenuRowButton("Capture Previous Area", systemImage: "arrow.uturn.backward.square") {
+                        CaptureAreaController.shared.capturePreviousArea()
+                        dismiss()
+                    }
+                }
                 MenuRowButton("Capture Fullscreen", systemImage: "rectangle.fill") { }
                 MenuRowButton("Capture Window", systemImage: "macwindow") { }
                 MenuRowButton("Scrolling Capture", systemImage: "arrow.up.and.down") { }
@@ -77,6 +83,14 @@ struct ContentView: View {
         }
         .sheet(isPresented: $isShowingHistory) {
             CaptureHistoryView(store: historyStore)
+        }
+        .onAppear {
+            hasPreviousArea = CaptureAreaController.shared.hasPreviousArea
+        }
+        .task {
+            for await _ in NotificationCenter.default.notifications(named: .captureAreaDidUpdate) {
+                hasPreviousArea = CaptureAreaController.shared.hasPreviousArea
+            }
         }
         .onDrop(of: [UTType.image, UTType.fileURL], isTargeted: $isDragOver) { providers in
             handleDrop(providers: providers)

@@ -6,33 +6,101 @@
 //
 
 import AppKit
+import CoreGraphics
+import ScreenCaptureKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-final class CaptureAreaController: NSObject {
+final class KeyableWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
+extension Notification.Name {
+    static let captureAreaDidUpdate = Notification.Name("CamSnapX.captureAreaDidUpdate")
+}
+
+final class CaptureAreaController: NSObject, CaptureAreaOverlayViewDelegate {
     static let shared = CaptureAreaController()
 
+    private var overlayWindows: [NSWindow] = []
     private var previewWindows: [NSPanel] = []
+    private var lastCapturedRect: CGRect?
 
-    func startCapture() {
-        startSystemAreaCapture()
+    var hasPreviousArea: Bool {
+        lastCapturedRect != nil
     }
 
-    private func startSystemAreaCapture() {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        process.arguments = ["-i", "-c"]
-        process.terminationHandler = { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.handleClipboardCapture()
-            }
-        }
+    func startCapture() {
+        startAreaSelection()
+    }
 
+    func capturePreviousArea() {
+        guard let rect = lastCapturedRect else { return }
+        Task { [weak self] in
+            await self?.captureAndShow(rect: rect)
+        }
+    }
+
+    private func startAreaSelection() {
+        endCapture()
+
+        for screen in NSScreen.screens {
+            let window = KeyableWindow(
+                contentRect: screen.frame,
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false,
+                screen: screen
+            )
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            window.level = .screenSaver
+            window.ignoresMouseEvents = false
+            window.hasShadow = false
+            window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+            let view = CaptureAreaOverlayView(frame: NSRect(origin: .zero, size: screen.frame.size))
+            view.delegate = self
+            window.contentView = view
+            window.makeKeyAndOrderFront(nil)
+            overlayWindows.append(window)
+        }
+    }
+
+    func captureAreaOverlayViewDidCancel(_ view: CaptureAreaOverlayView) {
+        endCapture()
+    }
+
+    func captureAreaOverlayView(_ view: CaptureAreaOverlayView, didFinishWith rect: CGRect) {
+        endCapture()
+        lastCapturedRect = rect
+        NotificationCenter.default.post(name: .captureAreaDidUpdate, object: nil)
+        Task { [weak self] in
+            await self?.captureAndShow(rect: rect)
+        }
+    }
+
+    private func endCapture() {
+        NSCursor.arrow.set()
+        overlayWindows.forEach { $0.orderOut(nil) }
+        overlayWindows.removeAll()
+    }
+
+    @MainActor
+    private func captureAndShow(rect: CGRect) async {
+        let cgImage: CGImage
         do {
-            try process.run()
+            cgImage = try await SCScreenshotManager.captureImage(in: rect)
         } catch {
             showCaptureError(error)
+            return
         }
+
+        let image = NSImage(cgImage: cgImage, size: NSSize(width: rect.width, height: rect.height))
+        let fileURL = saveImageToDisk(image)
+        let screen = screenForRect(rect)
+        showPreview(with: image, fileURL: fileURL, on: screen)
     }
 
     private func nextScreenshotURL() -> URL {
@@ -55,18 +123,6 @@ final class CaptureAreaController: NSObject {
         return folder.appendingPathComponent(name)
     }
 
-    private func handleClipboardCapture() {
-        let pasteboard = NSPasteboard.general
-        guard let images = pasteboard.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage],
-              let image = images.first else {
-            return
-        }
-
-        let screen = screenForPoint(NSEvent.mouseLocation)
-        let fileURL = saveImageToDisk(image)
-        showPreview(with: image, fileURL: fileURL, on: screen)
-
-    }
 
     private func saveImageToDisk(_ image: NSImage) -> URL? {
         let fileURL = nextScreenshotURL()
@@ -173,6 +229,11 @@ final class CaptureAreaController: NSObject {
         previewWindows.append(panel)
     }
 
+    private func screenForRect(_ rect: CGRect) -> NSScreen? {
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        return NSScreen.screens.first { $0.frame.contains(center) } ?? NSScreen.main
+    }
+
     private func copyToPasteboard(image: NSImage, fileURL: URL?) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
@@ -216,10 +277,6 @@ final class CaptureAreaController: NSObject {
         formatter.dateFormat = "yyyy.MM.dd HH.mm.ss"
         let timestamp = formatter.string(from: Date())
         return "CamSnapX \(timestamp).png"
-    }
-
-    private func screenForPoint(_ point: CGPoint) -> NSScreen? {
-        return NSScreen.screens.first { $0.frame.contains(point) } ?? NSScreen.main
     }
 
     @MainActor
