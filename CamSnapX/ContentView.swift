@@ -12,7 +12,6 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.controlActiveState) private var controlActiveState
-    @State private var isShowingHistory = false
     @StateObject private var historyStore = CaptureHistoryStore.shared
     @State private var draggedImage: NSImage? = nil
     @State private var isDragOver = false
@@ -65,7 +64,8 @@ struct ContentView: View {
                 MenuRowButton("Pin to the Screen...", systemImage: "pin") { }
                 Divider()
                 MenuRowButton("Capture History...", systemImage: "clock.arrow.circlepath") {
-                    isShowingHistory = true
+                    CaptureHistoryPanelController.shared.show(store: historyStore)
+                    dismiss()
                 }
                 MenuRowButton("About CamSnapX...", systemImage: "info.circle") { }
                 MenuRowButton("Check for Updates...", systemImage: "arrow.triangle.2.circlepath") { }
@@ -86,9 +86,6 @@ struct ContentView: View {
             if controlActiveState != .key {
                 dismiss()
             }
-        }
-        .sheet(isPresented: $isShowingHistory) {
-            CaptureHistoryView(store: historyStore)
         }
         .onAppear {
             hasPreviousArea = CaptureAreaController.shared.hasPreviousArea

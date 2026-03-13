@@ -11,19 +11,13 @@ import ScreenCaptureKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-final class KeyableWindow: NSWindow {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-}
-
 extension Notification.Name {
     static let captureAreaDidUpdate = Notification.Name("CamSnapX.captureAreaDidUpdate")
 }
 
-final class CaptureAreaController: NSObject, CaptureAreaOverlayViewDelegate {
+final class CaptureAreaController: NSObject {
     static let shared = CaptureAreaController()
 
-    private var overlayWindows: [NSWindow] = []
     private var previewWindows: [NSPanel] = []
     private var lastCapturedRect: CGRect?
 
@@ -50,32 +44,6 @@ final class CaptureAreaController: NSObject, CaptureAreaOverlayViewDelegate {
         startSystemCapture(arguments: ["-i", "-w", "-c"])
     }
 
-    private func startAreaSelection() {
-        endCapture()
-
-        for screen in NSScreen.screens {
-            let window = KeyableWindow(
-                contentRect: screen.frame,
-                styleMask: [.borderless],
-                backing: .buffered,
-                defer: false,
-                screen: screen
-            )
-            window.isOpaque = false
-            window.backgroundColor = .clear
-            window.level = .screenSaver
-            window.ignoresMouseEvents = false
-            window.hasShadow = false
-            window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-
-            let view = CaptureAreaOverlayView(frame: NSRect(origin: .zero, size: screen.frame.size))
-            view.delegate = self
-            window.contentView = view
-            window.makeKeyAndOrderFront(nil)
-            overlayWindows.append(window)
-        }
-    }
-
     private func startSystemCapture(arguments: [String]) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
@@ -93,24 +61,6 @@ final class CaptureAreaController: NSObject, CaptureAreaOverlayViewDelegate {
         }
     }
 
-    func captureAreaOverlayViewDidCancel(_ view: CaptureAreaOverlayView) {
-        endCapture()
-    }
-
-    func captureAreaOverlayView(_ view: CaptureAreaOverlayView, didFinishWith rect: CGRect) {
-        endCapture()
-        lastCapturedRect = rect
-        NotificationCenter.default.post(name: .captureAreaDidUpdate, object: nil)
-        Task { [weak self] in
-            await self?.captureAndShow(rect: rect)
-        }
-    }
-
-    private func endCapture() {
-        NSCursor.arrow.set()
-        overlayWindows.forEach { $0.orderOut(nil) }
-        overlayWindows.removeAll()
-    }
 
     @MainActor
     private func captureAndShow(rect: CGRect) async {
@@ -138,9 +88,11 @@ final class CaptureAreaController: NSObject, CaptureAreaOverlayViewDelegate {
     }
 
     private func showPreviewForImage(_ image: NSImage, screen: NSScreen?) {
+        CaptureHistoryPanelController.shared.hide()
         let fileURL = saveImageToDisk(image)
         showPreview(with: image, fileURL: fileURL, on: screen)
     }
+
 
     private func nextScreenshotURL() -> URL {
         let pictures = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
