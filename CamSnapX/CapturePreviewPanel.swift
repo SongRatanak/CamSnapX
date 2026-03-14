@@ -46,21 +46,6 @@ struct CapturePreviewView: View {
                     .frame(width: 180, height: 140)
                     .allowsHitTesting(false)
 
-                VStack {
-                    HStack {
-                        Button(action: dismissWithAnimation) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 14, weight: .semibold))
-                                .frame(width: 20, height: 20)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Color.white)
-                        Spacer()
-                    }
-                    Spacer()
-                }
-                .padding(6)
-
                 VStack(spacing: 6) {
                     Button("Copy") {
                         onCopy()
@@ -77,11 +62,25 @@ struct CapturePreviewView: View {
                 }
                 .foregroundStyle(Color.white)
             }
+
+            // Close button always on top
+            VStack {
+                HStack {
+                    Button(action: dismissWithAnimation) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.white)
+                    Spacer()
+                }
+                Spacer()
+            }
+            .padding(8)
+            .frame(width: 180, height: 140)
         }
         .padding(6)
-        .offset(x: isDismissing ? -240 : 0)
-        .opacity(isDismissing ? 0 : 1)
-        .animation(.easeInOut(duration: 0.25), value: isDismissing)
         .allowsHitTesting(!isDismissing)
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
@@ -92,12 +91,30 @@ struct CapturePreviewView: View {
 
     private func dismissWithAnimation() {
         guard !isDismissing else { return }
-        withAnimation(.easeInOut(duration: 0.25)) {
-            isDismissing = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+        isDismissing = true
+
+        // Animate the panel frame sliding left
+        guard let window = NSApp.windows.first(where: { $0.contentView?.subviews.contains(where: { ($0 as? NSHostingView<CapturePreviewView>) != nil }) ?? false }) ?? NSApp.keyWindow else {
             onClose()
+            return
         }
+
+        let currentFrame = window.frame
+        let targetFrame = NSRect(
+            x: currentFrame.origin.x - currentFrame.width - 20,
+            y: currentFrame.origin.y,
+            width: currentFrame.width,
+            height: currentFrame.height
+        )
+
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.35
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            window.animator().setFrame(targetFrame, display: true)
+            window.animator().alphaValue = 0
+        }, completionHandler: { [onClose] in
+            onClose()
+        })
     }
 
     private func makeDragItemProvider() -> NSItemProvider {
