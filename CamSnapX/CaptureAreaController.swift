@@ -173,11 +173,15 @@ final class CaptureAreaController: NSObject {
     }
 
     private func displaySpaceRect(from cocoaRect: CGRect) -> CGRect {
-        let unionRect = NSScreen.screens.reduce(CGRect.null) { $0.union($1.frame) }
-        let normalizedX = cocoaRect.origin.x - unionRect.minX
-        let normalizedY = cocoaRect.origin.y - unionRect.minY
-        let displayY = unionRect.height - normalizedY - cocoaRect.height
-        return CGRect(x: normalizedX, y: displayY, width: cocoaRect.width, height: cocoaRect.height)
+        // Primary screen (index 0) always has origin {0,0} and defines the CG coordinate reference
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? cocoaRect.height
+        // X is the same in both coordinate systems; only Y needs flipping relative to primary screen height
+        return CGRect(
+            x: cocoaRect.origin.x,
+            y: primaryHeight - cocoaRect.origin.y - cocoaRect.height,
+            width: cocoaRect.width,
+            height: cocoaRect.height
+        )
     }
 
 
