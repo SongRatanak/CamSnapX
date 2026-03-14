@@ -106,7 +106,10 @@ final class AllInOneOverlayController: NSObject {
                 }
             }
             overlayView.onAnyMouseDown = { [weak self] in
-                self?.toolbarPanel?.makeKeyAndOrderFront(nil)
+                // Notify toolbar to stop editing and sync values
+                if let hostingView = self?.toolbarPanel?.contentView as? NSHostingView<ToolbarContentView> {
+                    hostingView.rootView.isUserEditing = false
+                }
             }
             panel.contentView = overlayView
             activeOverlayView = overlayView
@@ -141,6 +144,11 @@ final class AllInOneOverlayController: NSObject {
         }
         NSApp.activate(ignoringOtherApps: true)
 
+        // Show toolbar for the new screen
+        if let activeOverlayView {
+            updateToolbar(selectionRect: activeOverlayView.selection, screen: screen)
+        }
+
         escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.keyCode == 53 {
                 self?.close()
@@ -166,17 +174,27 @@ final class AllInOneOverlayController: NSObject {
             height: effectiveSelection.height
         )
 
-        let toolbarWidth: CGFloat = 680
+        let toolbarWidth: CGFloat = 780
         let toolbarHeight: CGFloat = 56
         let gap: CGFloat = 12
 
         var toolbarX = screenRect.midX - toolbarWidth / 2
-        var toolbarY = screenRect.minY - toolbarHeight - gap
+        var toolbarY: CGFloat
 
-        // If toolbar would go below screen, put it above
-        if toolbarY < screen.visibleFrame.minY {
+        let spaceBelow = screenRect.minY - screen.visibleFrame.minY
+        let spaceAbove = screen.visibleFrame.maxY - screenRect.maxY
+
+        if spaceAbove >= toolbarHeight + gap && spaceAbove >= spaceBelow {
+            // More room above — rectangle is near the bottom, put toolbar above
             toolbarY = screenRect.maxY + gap
+        } else if spaceBelow >= toolbarHeight + gap {
+            // More room below — rectangle is near the top, put toolbar below
+            toolbarY = screenRect.minY - toolbarHeight - gap
+        } else {
+            // Neither side has enough room — rectangle is in the middle, put toolbar inside centered
+            toolbarY = screenRect.midY - toolbarHeight / 2
         }
+
         // Clamp horizontal
         toolbarX = max(screen.visibleFrame.minX + 4, min(toolbarX, screen.visibleFrame.maxX - toolbarWidth - 4))
 
@@ -195,7 +213,7 @@ final class AllInOneOverlayController: NSObject {
             tp.hidesOnDeactivate = false
             tp.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-            let toolbarView = ToolbarContentView { [weak self] action in
+            var toolbarView = ToolbarContentView { [weak self] action in
                 switch action {
                 case .area: self?.captureCurrentArea()
                 case .fullscreen: self?.activeOverlayView?.onCaptureFullscreen?()
@@ -206,29 +224,69 @@ final class AllInOneOverlayController: NSObject {
                 case .recording: break
                 }
             }
+            toolbarView.onSizeChanged = { [weak self] newWidth, newHeight in
+                self?.resizeSelection(to: CGSize(width: CGFloat(newWidth), height: CGFloat(newHeight)))
+            }
+            toolbarView.onToggleFullscreen = { [weak self] in
+                self?.toggleFullscreenSelection()
+            }
             tp.contentView = NSHostingView(rootView: toolbarView)
             toolbarPanel = tp
         }
 
-        toolbarPanel?.setFrame(NSRect(x: toolbarX, y: toolbarY, width: toolbarWidth, height: toolbarHeight), display: true)
+        toolbarPanel?.setFrame(NSRect(x: toolbarX, y: toolbarY, width: toolbarWidth, height: toolbarHeight), display: true, animate: false)
 
-        // Update size label
-        if let hostingView = toolbarPanel?.contentView as? NSHostingView<ToolbarContentView> {
-            hostingView.rootView.selectionWidth = Int(effectiveSelection.width)
-            hostingView.rootView.selectionHeight = Int(effectiveSelection.height)
+        // Update size label (deferred to avoid layout recursion)
+        let newWidth = Int(effectiveSelection.width)
+        let newHeight = Int(effectiveSelection.height)
+        DispatchQueue.main.async { [weak self] in
+            if let hostingView = self?.toolbarPanel?.contentView as? NSHostingView<ToolbarContentView> {
+                hostingView.rootView.selectionWidth = newWidth
+                hostingView.rootView.selectionHeight = newHeight
+            }
         }
 
-        toolbarPanel?.makeKeyAndOrderFront(nil)
+        toolbarPanel?.orderFrontRegardless()
     }
 
     private func defaultSelectionRect(for screen: NSScreen) -> CGRect {
-        let maxWidth = screen.frame.width * 0.7
-        let maxHeight = screen.frame.height * 0.35
-        let width = min(720, maxWidth)
-        let height = min(220, maxHeight)
+        let width = screen.frame.width * 0.55
+        let height = screen.frame.height * 0.55
         let x = (screen.frame.width - width) / 2
         let y = (screen.frame.height - height) / 2
         return CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    private func resizeSelection(to newSize: CGSize) {
+        guard let overlayView = activeOverlayView else { return }
+        let oldSel = overlayView.selection
+        // Clamp size to screen bounds
+        let clampedWidth = min(newSize.width, overlayView.bounds.width)
+        let clampedHeight = min(newSize.height, overlayView.bounds.height)
+        // Keep the center, resize around it
+        let centerX = oldSel.midX
+        let centerY = oldSel.midY
+        var newX = centerX - clampedWidth / 2
+        var newY = centerY - clampedHeight / 2
+        // Clamp position to bounds
+        newX = max(0, min(newX, overlayView.bounds.width - clampedWidth))
+        newY = max(0, min(newY, overlayView.bounds.height - clampedHeight))
+        overlayView.selection = CGRect(x: newX, y: newY, width: clampedWidth, height: clampedHeight)
+    }
+
+    private func toggleFullscreenSelection() {
+        guard let overlayView = activeOverlayView else { return }
+        let bounds = overlayView.bounds
+        if overlayView.selection == bounds {
+            // Restore to default size
+            let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
+            if let screen {
+                overlayView.selection = defaultSelectionRect(for: screen)
+            }
+        } else {
+            // Set to full screen
+            overlayView.selection = bounds
+        }
     }
 
     private func captureCurrentArea() {
@@ -322,8 +380,8 @@ private final class OverlayContentView: NSView {
 
     private let handleSize: CGFloat = 8
     private let handleHitSize: CGFloat = 16
-    private let defaultWidth: CGFloat = 756
-    private let defaultHeight: CGFloat = 491
+    private var defaultWidth: CGFloat { bounds.width * 0.55 }
+    private var defaultHeight: CGFloat { bounds.height * 0.55 }
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -333,9 +391,11 @@ private final class OverlayContentView: NSView {
         wantsLayer = true
 
         // Set default selection centered
-        let x = (frameRect.width - defaultWidth) / 2
-        let y = (frameRect.height - defaultHeight) / 2
-        selection = CGRect(x: x, y: y, width: defaultWidth, height: defaultHeight)
+        let initWidth = frameRect.width * 0.55
+        let initHeight = frameRect.height * 0.55
+        let x = (frameRect.width - initWidth) / 2
+        let y = (frameRect.height - initHeight) / 2
+        selection = CGRect(x: x, y: y, width: initWidth, height: initHeight)
     }
 
     required init?(coder: NSCoder) {
@@ -370,7 +430,6 @@ private final class OverlayContentView: NSView {
         ctx.setLineWidth(1)
 
         let s = selection
-        let hs = handleSize
         let cornerLen: CGFloat = 20
 
         // Corner L-handles
@@ -654,8 +713,8 @@ private final class ScreenSelectView: NSView {
         ctx.fill(bounds)
 
         // "Select This Screen" button
-        let btnW: CGFloat = 220
-        let btnH: CGFloat = 50
+        let btnW: CGFloat = 280
+        let btnH: CGFloat = 64
         buttonRect = CGRect(
             x: bounds.midX - btnW / 2,
             y: bounds.midY - btnH / 2,
@@ -664,24 +723,18 @@ private final class ScreenSelectView: NSView {
         )
 
         let bgColor = isHovering
-            ? NSColor.white.withAlphaComponent(0.25)
-            : NSColor.white.withAlphaComponent(0.15)
-        let path = CGPath(roundedRect: buttonRect, cornerWidth: 12, cornerHeight: 12, transform: nil)
+            ? NSColor.white.withAlphaComponent(0.95)
+            : NSColor.white.withAlphaComponent(0.85)
+        let path = CGPath(roundedRect: buttonRect, cornerWidth: 14, cornerHeight: 14, transform: nil)
         ctx.addPath(path)
         ctx.setFillColor(bgColor.cgColor)
         ctx.fillPath()
 
-        // Border
-        ctx.addPath(path)
-        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.5).cgColor)
-        ctx.setLineWidth(1.5)
-        ctx.strokePath()
-
         // Text
         let text = "Select This Screen"
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 16, weight: .semibold),
-            .foregroundColor: NSColor.white
+            .font: NSFont.systemFont(ofSize: 20, weight: .bold),
+            .foregroundColor: NSColor.black
         ]
         let attrStr = NSAttributedString(string: text, attributes: attrs)
         let textSize = attrStr.size()
@@ -708,20 +761,22 @@ private final class ScreenSelectView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         let wasHovering = isHovering
         isHovering = buttonRect.contains(point)
+        NSCursor.pointingHand.set()
         if wasHovering != isHovering {
-            NSCursor.pointingHand.set()
             needsDisplay = true
-        }
-        if !isHovering {
-            NSCursor.arrow.set()
         }
     }
 
+    override func mouseEntered(with event: NSEvent) {
+        NSCursor.pointingHand.set()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        NSCursor.arrow.set()
+    }
+
     override func mouseDown(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        if buttonRect.contains(point) {
-            onSelect?()
-        }
+        onSelect?()
     }
 }
 
@@ -735,6 +790,9 @@ private struct ToolbarContentView: View {
     let onAction: (ToolbarAction) -> Void
     var selectionWidth: Int = 0
     var selectionHeight: Int = 0
+    var onSizeChanged: ((Int, Int) -> Void)?
+    var onToggleFullscreen: (() -> Void)?
+    var isUserEditing: Bool = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -761,37 +819,12 @@ private struct ToolbarContentView: View {
             )
 
             if selectionWidth > 0 && selectionHeight > 0 {
-                HStack(spacing: 8) {
-                    Text("\(selectionWidth) × \(selectionHeight)")
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.9))
-
-                    Button(action: {}) {
-                        Image(systemName: "arrow.2.circlepath")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.white.opacity(0.9))
-
-                    Rectangle()
-                        .fill(.white.opacity(0.2))
-                        .frame(width: 1, height: 16)
-
-                    Button(action: {}) {
-                        Image(systemName: "crop")
-                            .font(.system(size: 12, weight: .semibold))
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 9, weight: .semibold))
-                            .padding(.leading, -2)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.white.opacity(0.9))
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.black.opacity(0.92))
+                SizeInputView(
+                    width: selectionWidth,
+                    height: selectionHeight,
+                    onSizeChanged: onSizeChanged,
+                    onToggleFullscreen: onToggleFullscreen,
+                    isUserEditing: isUserEditing
                 )
             }
         }
@@ -839,6 +872,131 @@ private struct ToolbarContentView: View {
             .fill(.white.opacity(0.12))
             .frame(width: 1, height: 22)
             .padding(.horizontal, 4)
+    }
+}
+
+private struct SizeInputView: View {
+    let width: Int
+    let height: Int
+    var onSizeChanged: ((Int, Int) -> Void)?
+    var onToggleFullscreen: (() -> Void)?
+    var isUserEditing: Bool = false
+
+    @State private var widthText: String = ""
+    @State private var heightText: String = ""
+    @FocusState private var widthFocused: Bool
+    @FocusState private var heightFocused: Bool
+    @State private var hoveringToggle = false
+    @State private var hoveringCrop = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            // Width input
+            TextField("W", text: $widthText)
+                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .frame(width: 56)
+                .textFieldStyle(.plain)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(.white.opacity(widthFocused ? 0.18 : 0.1))
+                )
+                .focused($widthFocused)
+
+            Text("×")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(.white.opacity(0.5))
+
+            // Height input
+            TextField("H", text: $heightText)
+                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .frame(width: 56)
+                .textFieldStyle(.plain)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(.white.opacity(heightFocused ? 0.18 : 0.1))
+                )
+                .focused($heightFocused)
+
+            // Fullscreen toggle button
+            Button(action: { onToggleFullscreen?() }) {
+                Image(systemName: "arrow.down.right.and.arrow.up.left")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .frame(width: 28, height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(.white.opacity(hoveringToggle ? 0.18 : 0.1))
+                    )
+            }
+            .buttonStyle(.plain)
+            .onHover { hoveringToggle = $0 }
+
+            // Crop / aspect ratio button
+            Button(action: {}) {
+                HStack(spacing: 2) {
+                    Image(systemName: "crop")
+                        .font(.system(size: 12, weight: .semibold))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8, weight: .semibold))
+                }
+                .foregroundStyle(.white.opacity(0.8))
+                .frame(height: 28)
+                .padding(.horizontal, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(.white.opacity(hoveringCrop ? 0.18 : 0.1))
+                )
+            }
+            .buttonStyle(.plain)
+            .onHover { hoveringCrop = $0 }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.black.opacity(0.92))
+        )
+        .onAppear {
+            widthText = "\(width)"
+            heightText = "\(height)"
+        }
+        .onChange(of: width) {
+            if !isUserEditing {
+                widthText = "\(width)"
+            }
+        }
+        .onChange(of: height) {
+            if !isUserEditing {
+                heightText = "\(height)"
+            }
+        }
+        .onChange(of: isUserEditing) {
+            if !isUserEditing {
+                widthText = "\(width)"
+                heightText = "\(height)"
+                widthFocused = false
+                heightFocused = false
+            }
+        }
+        .onChange(of: widthText) {
+            if widthFocused { applyLiveSize() }
+        }
+        .onChange(of: heightText) {
+            if heightFocused { applyLiveSize() }
+        }
+    }
+
+    private func applyLiveSize() {
+        guard let w = Int(widthText), let h = Int(heightText), w >= 10, h >= 10 else { return }
+        onSizeChanged?(w, h)
     }
 }
 
