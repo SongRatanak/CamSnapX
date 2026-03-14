@@ -10,6 +10,7 @@ import CoreGraphics
 import ScreenCaptureKit
 import SwiftUI
 import UniformTypeIdentifiers
+import Vision
 
 extension Notification.Name {
     static let captureAreaDidUpdate = Notification.Name("CamSnapX.captureAreaDidUpdate")
@@ -51,11 +52,16 @@ final class CaptureAreaController: NSObject {
     }
 
     private func startSystemCapture(arguments: [String]) {
+        let pasteboard = NSPasteboard.general
+        let initialChangeCount = pasteboard.changeCount
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         process.arguments = arguments
-        process.terminationHandler = { [weak self] _ in
+        process.terminationHandler = { [weak self] process in
+            guard process.terminationStatus == 0 else { return }
             DispatchQueue.main.async {
+                guard pasteboard.changeCount != initialChangeCount else { return }
                 self?.handleClipboardCapture()
             }
         }
@@ -69,17 +75,84 @@ final class CaptureAreaController: NSObject {
 
 
     @MainActor
-    private func captureAndShow(rect: CGRect) async {
-        let cgImage: CGImage
-        do {
-            cgImage = try await SCScreenshotManager.captureImage(in: rect)
-        } catch {
-            showCaptureError(error)
+    func captureAndShow(rect: CGRect) async {
+        let unionRect = NSScreen.screens.reduce(CGRect.null) { $0.union($1.frame) }
+        let captureRect = rect.intersection(unionRect)
+        guard captureRect.width > 2, captureRect.height > 2 else { return }
+        if let image = await captureWithScreenCaptureKit(rect: captureRect) {
+            showPreviewForImage(image, screen: screenForRect(captureRect))
             return
         }
 
-        let image = NSImage(cgImage: cgImage, size: NSSize(width: rect.width, height: rect.height))
-        showPreviewForImage(image, screen: screenForRect(rect))
+        if let image = captureWithScreencapture(rect: captureRect) {
+            showPreviewForImage(image, screen: screenForRect(captureRect))
+            return
+        }
+
+        let error = NSError(domain: "CamSnapX", code: 4, userInfo: [NSLocalizedDescriptionKey: "Unable to capture the selected area."])
+        showCaptureError(error)
+    }
+
+    @MainActor
+    func captureAndRecognizeText(rect: CGRect) async {
+        let unionRect = NSScreen.screens.reduce(CGRect.null) { $0.union($1.frame) }
+        let captureRect = rect.intersection(unionRect)
+        guard captureRect.width > 2, captureRect.height > 2 else { return }
+
+        let image = await captureWithScreenCaptureKit(rect: captureRect) ?? captureWithScreencapture(rect: captureRect)
+        guard let image else {
+            showOCRError(message: "Unable to capture the selected area.")
+            return
+        }
+
+        let recognizedText = await recognizeText(in: image)
+        guard let recognizedText, !recognizedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            showOCRError(message: "No text found in the selected area.")
+            return
+        }
+
+        copyTextToPasteboard(recognizedText)
+    }
+
+    @MainActor
+    private func captureWithScreenCaptureKit(rect: CGRect) async -> NSImage? {
+        do {
+            let displayRect = displaySpaceRect(from: rect)
+            let cgImage = try await SCScreenshotManager.captureImage(in: displayRect)
+            return NSImage(cgImage: cgImage, size: NSSize(width: rect.width, height: rect.height))
+        } catch {
+            return nil
+        }
+    }
+
+    private func captureWithScreencapture(rect: CGRect) -> NSImage? {
+        let unionRect = NSScreen.screens.reduce(CGRect.null) { $0.union($1.frame) }
+        let captureRect = rect.intersection(unionRect)
+        guard captureRect.width > 2, captureRect.height > 2 else { return nil }
+        let displayRect = displaySpaceRect(from: captureRect)
+
+        let tempURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("CamSnapX_capture_\(UUID().uuidString).png")
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        let x = Int(displayRect.origin.x.rounded())
+        let y = Int(displayRect.origin.y.rounded())
+        let w = Int(displayRect.size.width.rounded())
+        let h = Int(displayRect.size.height.rounded())
+        process.arguments = ["-x", "-R", "\(x),\(y),\(w),\(h)", tempURL.path]
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return nil
+        }
+
+        guard process.terminationStatus == 0 else { return nil }
+        let image = NSImage(contentsOf: tempURL)
+        try? FileManager.default.removeItem(at: tempURL)
+        return image
     }
 
     private func handleClipboardCapture() {
@@ -97,6 +170,14 @@ final class CaptureAreaController: NSObject {
         CaptureHistoryPanelController.shared.hide()
         let fileURL = saveImageToDisk(image)
         showPreview(with: image, fileURL: fileURL, on: screen)
+    }
+
+    private func displaySpaceRect(from cocoaRect: CGRect) -> CGRect {
+        let unionRect = NSScreen.screens.reduce(CGRect.null) { $0.union($1.frame) }
+        let normalizedX = cocoaRect.origin.x - unionRect.minX
+        let normalizedY = cocoaRect.origin.y - unionRect.minY
+        let displayY = unionRect.height - normalizedY - cocoaRect.height
+        return CGRect(x: normalizedX, y: displayY, width: cocoaRect.width, height: cocoaRect.height)
     }
 
 
@@ -254,6 +335,12 @@ final class CaptureAreaController: NSObject {
         pasteboard.writeObjects([item])
     }
 
+    private func copyTextToPasteboard(_ text: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+    }
+
     private func pngData(from image: NSImage) -> Data? {
         guard let tiffData = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiffData) else {
@@ -287,6 +374,45 @@ final class CaptureAreaController: NSObject {
         alert.informativeText = error.localizedDescription
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+
+    @MainActor
+    private func showOCRError(message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Text Capture Failed"
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    private func recognizeText(in image: NSImage) async -> String? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                let request = VNRecognizeTextRequest { request, _ in
+                    guard let results = request.results as? [VNRecognizedTextObservation] else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    let strings = results.compactMap { $0.topCandidates(1).first?.string }
+                    let combined = strings.joined(separator: "\n")
+                    continuation.resume(returning: combined)
+                }
+                request.recognitionLevel = .accurate
+                request.usesLanguageCorrection = true
+
+                let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+                do {
+                    try handler.perform([request])
+                } catch {
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
     }
 
 }
