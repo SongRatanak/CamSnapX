@@ -9,18 +9,6 @@ import Combine
 import Foundation
 import AppKit
 
-struct CaptureHistoryItem: Identifiable, Codable {
-    let id: UUID
-    let fileURL: URL
-    let createdAt: Date
-
-    init(fileURL: URL, createdAt: Date = Date()) {
-        self.id = UUID()
-        self.fileURL = fileURL
-        self.createdAt = createdAt
-    }
-}
-
 final class CaptureHistoryStore: ObservableObject {
     static let shared = CaptureHistoryStore()
 

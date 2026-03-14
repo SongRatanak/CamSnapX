@@ -12,10 +12,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Vision
 
-extension Notification.Name {
-    static let captureAreaDidUpdate = Notification.Name("CamSnapX.captureAreaDidUpdate")
-}
-
 final class CaptureAreaController: NSObject {
     static let shared = CaptureAreaController()
 
@@ -49,6 +45,11 @@ final class CaptureAreaController: NSObject {
         guard let image = NSImage(contentsOf: fileURL) else { return }
         let screen = screenForPoint(NSEvent.mouseLocation)
         showPreview(with: image, fileURL: fileURL, on: screen)
+    }
+
+    func showPreviewForImage(_ image: NSImage) {
+        let screen = screenForPoint(NSEvent.mouseLocation)
+        showPreviewForImage(image, screen: screen)
     }
 
     private func startSystemCapture(arguments: [String]) {
@@ -91,6 +92,14 @@ final class CaptureAreaController: NSObject {
 
         let error = NSError(domain: "CamSnapX", code: 4, userInfo: [NSLocalizedDescriptionKey: "Unable to capture the selected area."])
         showCaptureError(error)
+    }
+
+    @MainActor
+    func capturePreviewImage(rect: CGRect) async -> NSImage? {
+        let unionRect = NSScreen.screens.reduce(CGRect.null) { $0.union($1.frame) }
+        let captureRect = rect.intersection(unionRect)
+        guard captureRect.width > 2, captureRect.height > 2 else { return nil }
+        return await captureWithScreenCaptureKit(rect: captureRect)
     }
 
     @MainActor
