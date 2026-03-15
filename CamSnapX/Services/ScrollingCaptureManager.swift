@@ -18,6 +18,7 @@ protocol ScrollingCaptureDelegate: AnyObject {
     func setSelectionOverlayVisible(_ visible: Bool)
     func setPanelsIgnoreMouseEvents(_ ignore: Bool)
     func captureScrollFrame()
+    func didUpdateStitchedPreview(_ image: CGImage, totalHeight: Int)
 }
 
 final class ScrollingCaptureManager {
@@ -31,11 +32,12 @@ final class ScrollingCaptureManager {
     private var autoScrollTimer: Timer?
     private var duplicateCount: Int = 0
 
-    // Auto-scroll tuning
-    private let scrollPixelsPerStep: Int32 = -180   // negative = scroll down
-    private let scrollInterval: TimeInterval = 0.45  // time between scroll+capture
-    private let renderDelay: TimeInterval = 0.15      // wait for render after scroll
-    private let maxDuplicatesBeforeStop: Int = 3      // stop after N identical frames
+    // Auto-scroll is disabled by default; capture follows user scrolling.
+    private let autoScrollEnabled = false
+    private let scrollPixelsPerStep: Int32 = -280    // balanced speed to preserve overlap
+    private let scrollInterval: TimeInterval = 0.34  // time between scroll+capture
+    private let renderDelay: TimeInterval = 0.18     // wait for render after scroll
+    private let maxDuplicatesBeforeStop: Int = 8     // avoid false stop from transient duplicate frames
     private let duplicateHashThreshold: Int = 3
 
     // MARK: - Public API
@@ -53,9 +55,17 @@ final class ScrollingCaptureManager {
         delegate?.setPanelsIgnoreMouseEvents(true)
         delegate?.showScrollingCaptureControls()
 
-        // Capture first frame immediately, then start auto-scroll loop
+        // Capture first frame immediately.
         delegate?.captureScrollFrame()
-        startAutoScroll()
+        if autoScrollEnabled {
+            startAutoScroll()
+        }
+    }
+
+    /// Called when user scrolls manually — capture a frame
+    func userDidScroll() {
+        guard isScrollingCaptureActive else { return }
+        delegate?.captureScrollFrame()
     }
 
     func endScrollingCapture(shouldCapture: Bool) {
@@ -80,29 +90,34 @@ final class ScrollingCaptureManager {
         guard let scaled = scaleImage(frame, toWidth: tw) else { return }
         if targetWidth == 0 { targetWidth = tw }
 
-        // Check for duplicate frame (page reached bottom)
-        if let hash = averageHash(scaled) {
-            if hammingDistance(hash, lastHash) < duplicateHashThreshold {
-                duplicateCount += 1
-                if duplicateCount >= maxDuplicatesBeforeStop {
-                    // Page bottom reached — auto-finish
-                    endScrollingCapture(shouldCapture: true)
-                }
-                return
-            }
-            duplicateCount = 0
-        }
-
         guard let previous = lastFrame else {
             // First frame
             lastFrame = scaled
             stitchedImage = scaled
             lastHash = averageHash(scaled) ?? 0
+            delegate?.didUpdateStitchedPreview(scaled, totalHeight: scaled.height)
             return
         }
 
-        // Detect overlap using multi-band matching
-        guard let shift = detectShift(previous: previous, next: scaled) else { return }
+        // Detect overlap using multi-band matching, then fallback row-signature matching.
+        guard let shift = detectShift(previous: previous, next: scaled)
+            ?? detectShiftByRowSignature(previous: previous, next: scaled) else {
+            return
+        }
+
+        // Check for true near-duplicate only after we have a measured shift.
+        if let hash = averageHash(scaled),
+           hammingDistance(hash, lastHash) < duplicateHashThreshold,
+           shift < 12 {
+            duplicateCount += 1
+            if duplicateCount >= maxDuplicatesBeforeStop {
+                // Likely reached page bottom; stop auto-scroll and wait for user Done/Cancel.
+                stopAutoScroll()
+            }
+            return
+        } else {
+            duplicateCount = 0
+        }
 
         let overlap = scaled.height - shift
         guard overlap >= 10, shift >= 20 else { return }
@@ -115,6 +130,7 @@ final class ScrollingCaptureManager {
             stitchedImage = result
             lastFrame = scaled
             lastHash = averageHash(scaled) ?? lastHash
+            delegate?.didUpdateStitchedPreview(result, totalHeight: result.height)
         }
     }
 
@@ -245,6 +261,88 @@ final class ScrollingCaptureManager {
         let maxShift = Int(CGFloat(previous.height) * 0.90)
         guard fullShift >= minShift, fullShift <= maxShift else { return nil }
 
+        return fullShift
+    }
+
+    // Fallback matcher for pages where mixed moving content (e.g. video + feed) confuses band matching.
+    private func detectShiftByRowSignature(previous: CGImage, next: CGImage) -> Int? {
+        let dsWidth = 220
+        guard let prevSmall = resizeImage(previous, targetWidth: dsWidth),
+              let nextSmall = resizeImage(next, targetWidth: dsWidth),
+              let prevData = prevSmall.dataProvider?.data,
+              let nextData = nextSmall.dataProvider?.data,
+              let prevBytes = CFDataGetBytePtr(prevData),
+              let nextBytes = CFDataGetBytePtr(nextData) else {
+            return nil
+        }
+
+        let w = min(prevSmall.width, nextSmall.width)
+        let h = min(prevSmall.height, nextSmall.height)
+        guard w >= 20, h >= 40 else { return nil }
+
+        let pBPR = prevSmall.bytesPerRow
+        let nBPR = nextSmall.bytesPerRow
+        let xStart = w / 5
+        let xEnd = w * 4 / 5
+        guard xEnd > xStart else { return nil }
+
+        var prevRows = Array(repeating: Double.zero, count: h)
+        var nextRows = Array(repeating: Double.zero, count: h)
+
+        for y in 0..<h {
+            let pRow = y * pBPR
+            let nRow = y * nBPR
+            var pSum = 0.0
+            var nSum = 0.0
+            var count = 0.0
+
+            for x in stride(from: xStart, to: xEnd, by: 2) {
+                let pi = pRow + x * 4
+                let ni = nRow + x * 4
+                pSum += 0.299 * Double(prevBytes[pi]) + 0.587 * Double(prevBytes[pi + 1]) + 0.114 * Double(prevBytes[pi + 2])
+                nSum += 0.299 * Double(nextBytes[ni]) + 0.587 * Double(nextBytes[ni + 1]) + 0.114 * Double(nextBytes[ni + 2])
+                count += 1
+            }
+
+            if count > 0 {
+                prevRows[y] = pSum / count
+                nextRows[y] = nSum / count
+            }
+        }
+
+        let minShiftSmall = max(6, h / 40)
+        let maxShiftSmall = min(h - 8, h * 9 / 10)
+        guard maxShiftSmall > minShiftSmall else { return nil }
+
+        var bestShift = -1
+        var bestScore = Double.greatestFiniteMagnitude
+
+        for shift in minShiftSmall...maxShiftSmall {
+            var total = 0.0
+            var samples = 0.0
+            let upper = h - shift
+            if upper <= 0 { continue }
+
+            for y in stride(from: 0, to: upper, by: 2) {
+                total += abs(prevRows[y + shift] - nextRows[y])
+                samples += 1
+            }
+
+            guard samples > 0 else { continue }
+            let score = total / samples
+            if score < bestScore {
+                bestScore = score
+                bestShift = shift
+            }
+        }
+
+        guard bestShift > 0 else { return nil }
+
+        let scale = CGFloat(previous.height) / CGFloat(prevSmall.height)
+        let fullShift = Int((CGFloat(bestShift) * scale).rounded())
+        let minShift = max(10, Int(CGFloat(previous.height) * 0.03))
+        let maxShift = Int(CGFloat(previous.height) * 0.90)
+        guard fullShift >= minShift, fullShift <= maxShift else { return nil }
         return fullShift
     }
 

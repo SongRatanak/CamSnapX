@@ -96,10 +96,21 @@ final class CaptureAreaController: NSObject {
 
     @MainActor
     func capturePreviewImage(rect: CGRect) async -> NSImage? {
+        guard let cgImage = await capturePreviewCGImage(rect: rect) else { return nil }
+        return NSImage(cgImage: cgImage, size: NSSize(width: rect.width, height: rect.height))
+    }
+
+    @MainActor
+    func capturePreviewCGImage(rect: CGRect) async -> CGImage? {
         let unionRect = NSScreen.screens.reduce(CGRect.null) { $0.union($1.frame) }
         let captureRect = rect.intersection(unionRect)
         guard captureRect.width > 2, captureRect.height > 2 else { return nil }
-        return await captureWithScreenCaptureKit(rect: captureRect)
+        do {
+            let displayRect = displaySpaceRect(from: captureRect)
+            return try await SCScreenshotManager.captureImage(in: displayRect)
+        } catch {
+            return nil
+        }
     }
 
     @MainActor

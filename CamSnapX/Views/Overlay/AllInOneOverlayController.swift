@@ -18,14 +18,18 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
     private var scrollingPanel: NSPanel?
     private var scrollingControlPanel: NSPanel?
     private let scrollingViewModel = ScrollingCaptureViewModel()
-    private var scrollingPreviewTimer: Timer?
     private var currentSelectionRect: CGRect = .zero
     private var currentScreen: NSScreen?
+    private var savedSelection: CGRect?  // persists across overlay sessions
     private let scrollingCaptureManager = ScrollingCaptureManager()
-    private var scrollingMonitor: Any?
+    private let scrollingControlModel = ScrollingCaptureControlModel()
+    private var scrollingGlobalMonitor: Any?
+    private var scrollingLocalMonitor: Any?
     private var scrollingDeltaAccumulator: CGFloat = 0
-    private let scrollingCaptureThreshold: CGFloat = 220
+    private let scrollingCaptureThreshold: CGFloat = 36
     private var scrollingDirection: CGFloat = 0
+    private var lastCaptureTime: CFTimeInterval = 0
+    private let minCaptureInterval: CFTimeInterval = 0.18  // capture at most every 180ms
 
     private override init() {
         super.init()
@@ -69,6 +73,10 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
             NSEvent.removeMonitor(escMonitor)
         }
         escMonitor = nil
+        // Save current selection for next time
+        if let overlayView = activeOverlayView, overlayView.selection.width > 2, overlayView.selection.height > 2 {
+            savedSelection = overlayView.selection
+        }
         toolbarPanel?.orderOut(nil)
         toolbarPanel = nil
         hideScrollingCaptureShelf()
@@ -103,6 +111,10 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
         if isPrimary {
             let overlayView = OverlayContentView(frame: NSRect(origin: .zero, size: screen.frame.size))
             overlayView.screenFrame = screen.frame
+            // Restore saved selection if available
+            if let saved = savedSelection {
+                overlayView.selection = saved
+            }
             overlayView.onSelectionChanged = { [weak self] rect in
                 self?.updateToolbar(selectionRect: rect, screen: screen)
             }
@@ -359,14 +371,10 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
         scrollingPanel = panel
 
         updateScrollingShelfIfNeeded(selectionRect: currentSelectionRect, screen: screen)
-        startScrollingPreviewTimer()
         panel.orderFrontRegardless()
     }
 
     internal func hideScrollingCaptureShelf() {
-        scrollingPreviewTimer?.invalidate()
-        scrollingPreviewTimer = nil
-        scrollingViewModel.previewImage = nil
         scrollingPanel?.orderOut(nil)
         scrollingPanel = nil
     }
@@ -389,30 +397,6 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
 
         scrollingPanel.setFrame(NSRect(x: shelfX, y: shelfY, width: shelfSize.width, height: shelfSize.height), display: true, animate: false)
         scrollingViewModel.selectionSize = selectionRect.size
-        updateScrollingPreview()
-    }
-
-    private func startScrollingPreviewTimer() {
-        scrollingPreviewTimer?.invalidate()
-        scrollingPreviewTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            self?.updateScrollingPreview()
-        }
-    }
-
-    private func updateScrollingPreview() {
-        guard scrollingPanel != nil else { return }
-        guard let overlayView = activeOverlayView else { return }
-
-        let selection = overlayView.selection
-        guard selection.width > 2, selection.height > 2 else {
-            scrollingViewModel.previewImage = nil
-            return
-        }
-
-        let screenRect = screenRect(from: selection, screenFrame: overlayView.screenFrame)
-        Task { @MainActor in
-            self.scrollingViewModel.previewImage = await CaptureAreaController.shared.capturePreviewImage(rect: screenRect)
-        }
     }
 
     private func screenRect(from selection: CGRect, screenFrame: CGRect) -> CGRect {
@@ -424,6 +408,37 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
         )
     }
 
+    private func positionScrollingControlPanel(screen: NSScreen, size: CGSize) {
+        guard let panel = scrollingControlPanel else { return }
+
+        let selectionRect = screenRect(from: currentSelectionRect, screenFrame: screen.frame)
+        let visible = screen.visibleFrame
+        let gap: CGFloat = 12
+        let margin: CGFloat = 12
+
+        let candidates: [CGPoint] = [
+            CGPoint(x: selectionRect.maxX + gap, y: selectionRect.midY - size.height / 2),
+            CGPoint(x: selectionRect.minX - gap - size.width, y: selectionRect.midY - size.height / 2),
+            CGPoint(x: selectionRect.midX - size.width / 2, y: selectionRect.maxY + gap),
+            CGPoint(x: selectionRect.midX - size.width / 2, y: selectionRect.minY - gap - size.height),
+            CGPoint(x: visible.maxX - size.width - margin, y: visible.maxY - size.height - margin)
+        ]
+
+        func clamped(_ p: CGPoint) -> CGPoint {
+            CGPoint(
+                x: max(visible.minX + margin, min(p.x, visible.maxX - size.width - margin)),
+                y: max(visible.minY + margin, min(p.y, visible.maxY - size.height - margin))
+            )
+        }
+
+        let chosen = candidates
+            .map(clamped)
+            .first(where: { !CGRect(origin: $0, size: size).intersects(selectionRect) })
+            ?? clamped(candidates.last ?? .zero)
+
+        panel.setFrame(NSRect(origin: chosen, size: size), display: true, animate: false)
+    }
+
     internal func showScrollingCaptureControls() {
         guard let screen = currentScreen ?? NSScreen.main else { return }
         guard scrollingControlPanel == nil else {
@@ -431,7 +446,11 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
             return
         }
 
-        let controlSize = CGSize(width: 180, height: 70)
+        // Reset control model
+        scrollingControlModel.previewImage = nil
+        scrollingControlModel.capturedHeight = 0
+
+        let controlSize = CGSize(width: 248, height: 252)
         let panel = ToolbarPanel(
             contentRect: NSRect(x: 0, y: 0, width: controlSize.width, height: controlSize.height),
             styleMask: [.borderless],
@@ -439,12 +458,13 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
             defer: false
         )
         panel.isFloatingPanel = true
-        panel.level = .screenSaver
+        panel.level = .floating
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.hidesOnDeactivate = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.sharingType = .none
 
         let controlView = ScrollingCaptureControlView(
             onCancel: { [weak self] in
@@ -453,23 +473,13 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
             onDone: { [weak self] in
                 self?.scrollingCaptureManager.endScrollingCapture(shouldCapture: true)
             },
-            showProgress: true
+            showProgress: true,
+            model: scrollingControlModel
         )
         panel.contentView = NSHostingView(rootView: controlView)
         scrollingControlPanel = panel
 
-        let selection = currentSelectionRect
-        let screenRect = screenRect(from: selection, screenFrame: screen.frame)
-        let gap: CGFloat = 10
-        var panelX = screenRect.midX - controlSize.width / 2
-        var panelY = screenRect.maxY + gap
-        if panelY + controlSize.height > screen.visibleFrame.maxY {
-            panelY = screenRect.minY - controlSize.height - gap
-        }
-        panelX = max(screen.visibleFrame.minX + 4, min(panelX, screen.visibleFrame.maxX - controlSize.width - 4))
-        panelY = max(screen.visibleFrame.minY + 4, min(panelY, screen.visibleFrame.maxY - controlSize.height - 4))
-
-        panel.setFrame(NSRect(x: panelX, y: panelY, width: controlSize.width, height: controlSize.height), display: true, animate: false)
+        positionScrollingControlPanel(screen: screen, size: controlSize)
         panel.orderFrontRegardless()
     }
 
@@ -486,16 +496,26 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
 private extension AllInOneOverlayController {
     func startScrollMonitor() {
         stopScrollMonitor()
-        scrollingMonitor = NSEvent.addGlobalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+        // Global monitor: catches scroll events going to other apps
+        scrollingGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
             self?.handleScrollEvent(event)
+        }
+        // Local monitor: catches scroll events going to our own panels (toolbar, controls)
+        scrollingLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            self?.handleScrollEvent(event)
+            return event
         }
     }
 
     func stopScrollMonitor() {
-        if let scrollingMonitor {
-            NSEvent.removeMonitor(scrollingMonitor)
+        if let scrollingGlobalMonitor {
+            NSEvent.removeMonitor(scrollingGlobalMonitor)
         }
-        scrollingMonitor = nil
+        scrollingGlobalMonitor = nil
+        if let scrollingLocalMonitor {
+            NSEvent.removeMonitor(scrollingLocalMonitor)
+        }
+        scrollingLocalMonitor = nil
     }
 
     func handleScrollEvent(_ event: NSEvent) {
@@ -514,7 +534,16 @@ private extension AllInOneOverlayController {
         scrollingDeltaAccumulator += delta
         if scrollingDeltaAccumulator >= scrollingCaptureThreshold {
             scrollingDeltaAccumulator = 0
-            captureScrollingFrame()
+
+            // Throttle: capture at most once per minCaptureInterval
+            let now = CACurrentMediaTime()
+            if now - lastCaptureTime >= minCaptureInterval {
+                lastCaptureTime = now
+                // Small delay for page to render after scroll
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+                    self?.scrollingCaptureManager.userDidScroll()
+                }
+            }
         }
     }
 
@@ -528,8 +557,7 @@ private extension AllInOneOverlayController {
         let screenRect = screenRect(from: selection, screenFrame: overlayView.screenFrame)
         Task { @MainActor [weak self] in
             guard let self else { return }
-            if let image = await CaptureAreaController.shared.capturePreviewImage(rect: screenRect),
-               let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            if let cgImage = await CaptureAreaController.shared.capturePreviewCGImage(rect: screenRect) {
                 self.scrollingCaptureManager.appendScrollingFrame(cgImage)
             }
         }
@@ -552,15 +580,62 @@ extension AllInOneOverlayController {
 
     func setSelectionOverlayVisible(_ visible: Bool) {
         activeOverlayView?.showsSelectionOverlay = visible
+        if visible {
+            activeOverlayView?.needsDisplay = true
+        }
     }
 
     func setPanelsIgnoreMouseEvents(_ ignore: Bool) {
-        for panel in overlayPanels {
-            panel.ignoresMouseEvents = ignore
+        if ignore {
+            // Make overlay panels fully transparent & pass-through during scroll capture
+            for panel in overlayPanels {
+                panel.ignoresMouseEvents = true
+                panel.alphaValue = 0
+            }
+            // Hide toolbar and shelf — only show the Done/Cancel control
+            toolbarPanel?.orderOut(nil)
+            scrollingPanel?.orderOut(nil)
+
+            scrollingDeltaAccumulator = 0
+            scrollingDirection = 0
+            lastCaptureTime = 0
+            startScrollMonitor()
+        } else {
+            stopScrollMonitor()
+            for panel in overlayPanels {
+                panel.ignoresMouseEvents = false
+                panel.alphaValue = 1
+            }
+            toolbarPanel?.orderFrontRegardless()
         }
     }
 
     func captureScrollFrame() {
         captureScrollingFrame()
+    }
+
+    func didUpdateStitchedPreview(_ image: CGImage, totalHeight: Int) {
+        // Live preview only while active scrolling capture (not in pre-capture shelf).
+        let maxPreviewHeight = 300
+        let scale = min(1.0, CGFloat(maxPreviewHeight) / CGFloat(image.height))
+        let tw = max(1, Int(CGFloat(image.width) * scale))
+        let th = max(1, Int(CGFloat(image.height) * scale))
+
+        guard let ctx = CGContext(
+            data: nil, width: tw, height: th,
+            bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return }
+
+        ctx.interpolationQuality = .low
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: tw, height: th))
+        guard let thumb = ctx.makeImage() else { return }
+        let nsImage = NSImage(cgImage: thumb, size: NSSize(width: tw, height: th))
+
+        DispatchQueue.main.async { [weak self] in
+            self?.scrollingControlModel.previewImage = nsImage
+            self?.scrollingControlModel.capturedHeight = totalHeight
+        }
     }
 }

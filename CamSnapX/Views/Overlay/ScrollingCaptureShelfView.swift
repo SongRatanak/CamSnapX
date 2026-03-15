@@ -5,13 +5,15 @@
 //  Created by SongRatanak on 13/3/26.
 //
 
-import AppKit
 import Combine
 import SwiftUI
 
 final class ScrollingCaptureViewModel: ObservableObject {
-    @Published var previewImage: NSImage?
-    @Published var selectionSize: CGSize = .zero
+    let objectWillChange = ObservableObjectPublisher()
+
+    var selectionSize: CGSize = .zero {
+        didSet { objectWillChange.send() }
+    }
 
     var canStart: Bool {
         selectionSize.width > 2 && selectionSize.height > 2
@@ -40,6 +42,10 @@ struct ScrollingCaptureShelfView: View {
                         .foregroundStyle(.white.opacity(0.7))
                 }
 
+                Text("Preview appears after capture starts.")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.55))
+
                 Button(action: onStart) {
                     Text("Start Capture")
                         .font(.system(size: 12, weight: .semibold))
@@ -57,28 +63,6 @@ struct ScrollingCaptureShelfView: View {
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-
-            ZStack {
-                if let image = model.previewImage {
-                    Image(nsImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .clipped()
-                } else {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(Color.white.opacity(0.2), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-
-                    Text("Preview")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.6))
-                }
-            }
-            .frame(width: 150, height: 90)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
-            )
         }
         .padding(12)
         .frame(height: 120)

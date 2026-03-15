@@ -40,7 +40,7 @@ struct CaptureHistoryPanelView: View {
             }
             .padding(16)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(width: 1400, height: 240)
     }
 
     private var header: some View {
@@ -142,6 +142,9 @@ struct CaptureHistoryPanelView: View {
     }
 }
 
+private let thumbWidth: CGFloat = 170
+private let thumbHeight: CGFloat = 102
+
 private struct HistoryCard: View {
     let item: CaptureHistoryItem
     let onRestore: () -> Void
@@ -152,34 +155,41 @@ private struct HistoryCard: View {
     var body: some View {
         VStack(spacing: 10) {
             ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+                    .frame(width: thumbWidth, height: thumbHeight)
+
                 if let thumbnail {
                     Image(nsImage: thumbnail)
                         .resizable()
                         .scaledToFill()
-                        .frame(width: 170, height: 102)
+                        .frame(width: thumbWidth, height: thumbHeight)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                } else {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.08))
-                        .frame(width: 170, height: 102)
                 }
 
                 if isHovering {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.black.opacity(0.35))
-                        .frame(width: 170, height: 102)
+                        .fill(Color.black.opacity(0.4))
+                        .frame(width: thumbWidth, height: thumbHeight)
 
                     Button {
                         onRestore()
                     } label: {
                         Label("Restore", systemImage: "arrow.uturn.backward")
-                            .font(.custom("Avenir Next Demi Bold", size: 11))
-                            .padding(.vertical, 6)
+                            .font(.system(size: 11, weight: .semibold))
+                            .padding(.vertical, 5)
                             .padding(.horizontal, 10)
                             .background(Color.white.opacity(0.2), in: Capsule())
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.white)
+                }
+            }
+            .frame(width: thumbWidth, height: thumbHeight)
+            .clipped()
+            .onHover { hovering in
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    isHovering = hovering
                 }
             }
 
@@ -188,19 +198,22 @@ private struct HistoryCard: View {
                 .foregroundStyle(.white.opacity(0.7))
         }
         .onAppear { loadThumbnail() }
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) {
-                isHovering = hovering
-            }
-        }
     }
 
     private func loadThumbnail() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            if let image = NSImage(contentsOf: item.fileURL) {
-                DispatchQueue.main.async {
-                    thumbnail = image
-                }
+        let url = item.fileURL
+        DispatchQueue.global(qos: .utility).async {
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return }
+            let maxDim = max(thumbWidth, thumbHeight) * 2
+            let options: [CFString: Any] = [
+                kCGImageSourceThumbnailMaxPixelSize: maxDim,
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true
+            ]
+            guard let cgThumb = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return }
+            let nsImage = NSImage(cgImage: cgThumb, size: NSSize(width: cgThumb.width, height: cgThumb.height))
+            DispatchQueue.main.async {
+                thumbnail = nsImage
             }
         }
     }
@@ -217,7 +230,7 @@ private struct EmptyHistoryCard: View {
         VStack(spacing: 10) {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.white.opacity(0.08))
-                .frame(width: 170, height: 102)
+                .frame(width: thumbWidth, height: thumbHeight)
                 .overlay(
                     Text("No items")
                         .font(.custom("Avenir Next Medium", size: 11))
