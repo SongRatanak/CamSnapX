@@ -31,13 +31,15 @@ final class ScrollingCaptureManager {
     private var targetWidth: Int = 0
     private var autoScrollTimer: Timer?
     private var duplicateCount: Int = 0
+    /// Fingerprints of each new-content strip that was stitched, used to reject duplicates.
+    private var stripFingerprints: [[Double]] = []
 
-    // Auto-scroll is disabled by default; capture follows user scrolling.
+    // Auto-scroll is disabled; capture follows user scrolling.
     private let autoScrollEnabled = false
-    private let scrollPixelsPerStep: Int32 = -280    // balanced speed to preserve overlap
-    private let scrollInterval: TimeInterval = 0.34  // time between scroll+capture
-    private let renderDelay: TimeInterval = 0.18     // wait for render after scroll
-    private let maxDuplicatesBeforeStop: Int = 8     // avoid false stop from transient duplicate frames
+    private let scrollPixelsPerStep: Int32 = -280
+    private let scrollInterval: TimeInterval = 0.34
+    private let renderDelay: TimeInterval = 0.18
+    private let maxDuplicatesBeforeStop: Int = 8
     private let duplicateHashThreshold: Int = 3
 
     // MARK: - Public API
@@ -50,12 +52,13 @@ final class ScrollingCaptureManager {
         lastHash = 0
         targetWidth = 0
         duplicateCount = 0
+        stripFingerprints = []
         delegate?.hideScrollingCaptureShelf()
         delegate?.setSelectionOverlayVisible(false)
         delegate?.setPanelsIgnoreMouseEvents(true)
         delegate?.showScrollingCaptureControls()
 
-        // Capture first frame immediately.
+        // Capture first frame immediately
         delegate?.captureScrollFrame()
         if autoScrollEnabled {
             startAutoScroll()
@@ -80,6 +83,7 @@ final class ScrollingCaptureManager {
             stitchedImage = nil
             lastFrame = nil
             targetWidth = 0
+            stripFingerprints = []
         }
     }
 
@@ -124,7 +128,19 @@ final class ScrollingCaptureManager {
 
         let base = stitchedImage ?? previous
 
-        if isDuplicateTail(stitched: base, next: scaled, overlap: overlap) { return }
+        // Fingerprint the new content strip and check against all previously stitched strips
+        let newContentHeight = scaled.height - overlap
+        guard newContentHeight > 0 else { return }
+        if let newStrip = scaled.cropping(to: CGRect(x: 0, y: overlap, width: scaled.width, height: newContentHeight)) {
+            let fp = stripFingerprint(newStrip)
+            for existing in stripFingerprints {
+                if fingerprintDistance(fp, existing) < 4.0 {
+                    // This strip's content already exists in the stitched image — skip
+                    return
+                }
+            }
+            stripFingerprints.append(fp)
+        }
 
         if let result = stitchFrames(base: base, next: scaled, overlap: overlap) {
             stitchedImage = result
@@ -377,51 +393,66 @@ final class ScrollingCaptureManager {
         return totalDiff / count
     }
 
-    // MARK: - Duplicate Tail Detection
+    // MARK: - Strip Fingerprinting (for duplicate detection)
 
-    private func isDuplicateTail(stitched: CGImage, next: CGImage, overlap: Int) -> Bool {
-        let newHeight = next.height - overlap
-        guard newHeight > 0, stitched.height >= newHeight else { return false }
+    /// Creates a compact fingerprint of an image strip by dividing it into a grid
+    /// and computing the average luminance of each cell.
+    private func stripFingerprint(_ image: CGImage) -> [Double] {
+        let gridW = 16
+        let gridH = 8
+        guard let small = resizeImage(image, targetWidth: 160),
+              let data = small.dataProvider?.data,
+              let bytes = CFDataGetBytePtr(data) else {
+            return []
+        }
+        let w = small.width
+        let h = small.height
+        guard w > 0, h > 0 else { return [] }
+        let bpr = small.bytesPerRow
+        let cellW = max(1, w / gridW)
+        let cellH = max(1, h / gridH)
+        var result = [Double]()
+        result.reserveCapacity(gridW * gridH)
 
-        let compareH = min(newHeight, 400)
-        let compareW = min(stitched.width, next.width)
-        guard compareH >= 20, compareW >= 20 else { return false }
-
-        let tailRect = CGRect(x: 0, y: stitched.height - compareH, width: compareW, height: compareH)
-        let newRect = CGRect(x: 0, y: overlap, width: compareW, height: compareH)
-
-        guard let tailCrop = stitched.cropping(to: tailRect),
-              let newCrop = next.cropping(to: newRect) else { return false }
-
-        let dsW = min(180, compareW)
-        guard let tailSmall = resizeImage(tailCrop, targetWidth: dsW),
-              let newSmall = resizeImage(newCrop, targetWidth: dsW),
-              let tailData = tailSmall.dataProvider?.data,
-              let newData = newSmall.dataProvider?.data,
-              let tailBytes = CFDataGetBytePtr(tailData),
-              let newBytes = CFDataGetBytePtr(newData) else { return false }
-
-        let w = min(tailSmall.width, newSmall.width)
-        let h = min(tailSmall.height, newSmall.height)
-        guard w > 0, h > 0 else { return false }
-
-        var totalDiff: Double = 0
-        var count: Double = 0
-        for y in 0..<h {
-            let tRow = y * tailSmall.bytesPerRow
-            let nRow = y * newSmall.bytesPerRow
-            for x in stride(from: 0, to: w, by: max(1, w / 40)) {
-                let t = tRow + x * 4
-                let n = nRow + x * 4
-                totalDiff += abs(Double(tailBytes[t]) - Double(newBytes[n]))
-                totalDiff += abs(Double(tailBytes[t + 1]) - Double(newBytes[n + 1]))
-                totalDiff += abs(Double(tailBytes[t + 2]) - Double(newBytes[n + 2]))
-                count += 3
+        for gy in 0..<gridH {
+            let startY = gy * cellH
+            guard startY < h else {
+                // Image too short for remaining grid rows — pad with 0
+                for _ in 0..<gridW { result.append(0) }
+                continue
+            }
+            let endY = min(startY + cellH, h)
+            for gx in 0..<gridW {
+                let startX = gx * cellW
+                guard startX < w else {
+                    result.append(0)
+                    continue
+                }
+                let endX = min(startX + cellW, w)
+                var sum = 0.0
+                var count = 0.0
+                for y in startY..<endY {
+                    let row = y * bpr
+                    for x in startX..<endX {
+                        let i = row + x * 4
+                        sum += 0.299 * Double(bytes[i]) + 0.587 * Double(bytes[i + 1]) + 0.114 * Double(bytes[i + 2])
+                        count += 1
+                    }
+                }
+                result.append(count > 0 ? sum / count : 0)
             }
         }
+        return result
+    }
 
-        guard count > 0 else { return false }
-        return (totalDiff / count) < 12.0
+    /// Mean absolute difference between two fingerprints.
+    private func fingerprintDistance(_ a: [Double], _ b: [Double]) -> Double {
+        guard a.count == b.count, !a.isEmpty else { return .greatestFiniteMagnitude }
+        var total = 0.0
+        for i in 0..<a.count {
+            total += abs(a[i] - b[i])
+        }
+        return total / Double(a.count)
     }
 
     // MARK: - Stitching

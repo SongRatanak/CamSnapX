@@ -26,10 +26,12 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
     private var scrollingGlobalMonitor: Any?
     private var scrollingLocalMonitor: Any?
     private var scrollingDeltaAccumulator: CGFloat = 0
-    private let scrollingCaptureThreshold: CGFloat = 36
+    private var scrollingCaptureThreshold: CGFloat = 140
     private var scrollingDirection: CGFloat = 0
     private var lastCaptureTime: CFTimeInterval = 0
-    private let minCaptureInterval: CFTimeInterval = 0.18  // capture at most every 180ms
+    private let minCaptureInterval: CFTimeInterval = 0.25  // capture at most every 250ms
+    private let scrollRenderDelay: CFTimeInterval = 0.26
+    private var scrollCaptureWorkItem: DispatchWorkItem?
 
     private override init() {
         super.init()
@@ -494,8 +496,16 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
 // MARK: - Scroll Event Handling for Scrolling Capture
 
 private extension AllInOneOverlayController {
+    func updateScrollThresholdForSelection() {
+        let height = max(0, currentSelectionRect.height)
+        let dynamic = height * 0.24
+        let clamped = max(120, min(260, dynamic))
+        scrollingCaptureThreshold = clamped
+    }
+
     func startScrollMonitor() {
         stopScrollMonitor()
+        updateScrollThresholdForSelection()
         // Global monitor: catches scroll events going to other apps
         scrollingGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
             self?.handleScrollEvent(event)
@@ -516,6 +526,8 @@ private extension AllInOneOverlayController {
             NSEvent.removeMonitor(scrollingLocalMonitor)
         }
         scrollingLocalMonitor = nil
+        scrollCaptureWorkItem?.cancel()
+        scrollCaptureWorkItem = nil
     }
 
     func handleScrollEvent(_ event: NSEvent) {
@@ -539,10 +551,14 @@ private extension AllInOneOverlayController {
             let now = CACurrentMediaTime()
             if now - lastCaptureTime >= minCaptureInterval {
                 lastCaptureTime = now
-                // Small delay for page to render after scroll
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+
+                // Cancel any pending capture and schedule a new one after render delay
+                scrollCaptureWorkItem?.cancel()
+                let workItem = DispatchWorkItem { [weak self] in
                     self?.scrollingCaptureManager.userDidScroll()
                 }
+                scrollCaptureWorkItem = workItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + scrollRenderDelay, execute: workItem)
             }
         }
     }
