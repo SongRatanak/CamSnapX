@@ -12,14 +12,15 @@ struct SizeInputView: View {
     let height: Int
     var onSizeChanged: ((Int, Int) -> Void)?
     var onToggleFullscreen: (() -> Void)?
+    var onAspectRatioChanged: ((AspectRatioPreset) -> Void)?
     var isUserEditing: Bool = false
+    var aspectRatio: AspectRatioPreset = .freeform
 
     @State private var widthText: String = ""
     @State private var heightText: String = ""
     @FocusState private var widthFocused: Bool
     @FocusState private var heightFocused: Bool
     @State private var hoveringToggle = false
-    @State private var hoveringCrop = false
 
     var body: some View {
         HStack(spacing: 6) {
@@ -68,7 +69,42 @@ struct SizeInputView: View {
             .buttonStyle(.plain)
             .onHover { hoveringToggle = $0 }
 
-            Button(action: {}) {
+            Menu {
+                Button {
+                    onAspectRatioChanged?(.freeform)
+                } label: {
+                    HStack {
+                        Text("Freeform")
+                        if case .freeform = aspectRatio { Image(systemName: "checkmark") }
+                    }
+                }
+
+                Divider()
+
+                ForEach(AspectRatioPreset.landscape, id: \.self) { preset in
+                    Button {
+                        onAspectRatioChanged?(preset)
+                    } label: {
+                        HStack {
+                            Text(preset.label)
+                            if preset == aspectRatio { Image(systemName: "checkmark") }
+                        }
+                    }
+                }
+
+                Divider()
+
+                ForEach(AspectRatioPreset.portrait, id: \.self) { preset in
+                    Button {
+                        onAspectRatioChanged?(preset)
+                    } label: {
+                        HStack {
+                            Text(preset.label)
+                            if preset == aspectRatio { Image(systemName: "checkmark") }
+                        }
+                    }
+                }
+            } label: {
                 HStack(spacing: 2) {
                     Image(systemName: "crop")
                         .font(.system(size: 12, weight: .semibold))
@@ -80,11 +116,11 @@ struct SizeInputView: View {
                 .padding(.horizontal, 8)
                 .background(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(.white.opacity(hoveringCrop ? 0.18 : 0.1))
+                        .fill(.white.opacity(0.1))
                 )
             }
-            .buttonStyle(.plain)
-            .onHover { hoveringCrop = $0 }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)

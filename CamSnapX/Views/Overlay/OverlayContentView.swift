@@ -16,6 +16,9 @@ final class OverlayContentView: NSView {
     var onCaptureWindow: (() -> Void)?
     var onAnyMouseDown: (() -> Void)?
 
+    /// When set, drawing and resizing will maintain this width/height ratio.
+    var lockedAspectRatio: CGFloat? = nil
+
     var showsSelectionOverlay: Bool = true {
         didSet {
             needsDisplay = true
@@ -241,10 +244,18 @@ final class OverlayContentView: NSView {
 
         switch dragMode {
         case .drawing:
-            let x = min(dragStart.x, clamped.x)
-            let y = min(dragStart.y, clamped.y)
-            let w = abs(clamped.x - dragStart.x)
-            let h = abs(clamped.y - dragStart.y)
+            var w = abs(clamped.x - dragStart.x)
+            var h = abs(clamped.y - dragStart.y)
+            if let ratio = lockedAspectRatio {
+                // Constrain to aspect ratio — use whichever dimension is smaller
+                if w / ratio > h {
+                    w = h * ratio
+                } else {
+                    h = w / ratio
+                }
+            }
+            let x = clamped.x < dragStart.x ? dragStart.x - w : dragStart.x
+            let y = clamped.y < dragStart.y ? dragStart.y - h : dragStart.y
             selection = CGRect(x: x, y: y, width: w, height: h)
 
         case .moving:
@@ -255,44 +266,109 @@ final class OverlayContentView: NSView {
             newRect.origin.y = max(0, min(newRect.origin.y, bounds.height - newRect.height))
             selection = newRect
 
-        case .resizeTL:
-            let newMinX = min(clamped.x, dragOriginalSelection.maxX - 10)
-            let newMinY = min(clamped.y, dragOriginalSelection.maxY - 10)
-            selection = CGRect(x: newMinX, y: newMinY, width: dragOriginalSelection.maxX - newMinX, height: dragOriginalSelection.maxY - newMinY)
+        case .resizeTL, .resizeTR, .resizeBL, .resizeBR:
+            resizeCorner(dragMode, clamped: clamped)
 
-        case .resizeTR:
-            let newMaxX = max(clamped.x, dragOriginalSelection.minX + 10)
-            let newMinY = min(clamped.y, dragOriginalSelection.maxY - 10)
-            selection = CGRect(x: dragOriginalSelection.minX, y: newMinY, width: newMaxX - dragOriginalSelection.minX, height: dragOriginalSelection.maxY - newMinY)
-
-        case .resizeBL:
-            let newMinX = min(clamped.x, dragOriginalSelection.maxX - 10)
-            let newMaxY = max(clamped.y, dragOriginalSelection.minY + 10)
-            selection = CGRect(x: newMinX, y: dragOriginalSelection.minY, width: dragOriginalSelection.maxX - newMinX, height: newMaxY - dragOriginalSelection.minY)
-
-        case .resizeBR:
-            let newMaxX = max(clamped.x, dragOriginalSelection.minX + 10)
-            let newMaxY = max(clamped.y, dragOriginalSelection.minY + 10)
-            selection = CGRect(x: dragOriginalSelection.minX, y: dragOriginalSelection.minY, width: newMaxX - dragOriginalSelection.minX, height: newMaxY - dragOriginalSelection.minY)
-
-        case .resizeT:
-            let newMinY = min(clamped.y, dragOriginalSelection.maxY - 10)
-            selection = CGRect(x: dragOriginalSelection.minX, y: newMinY, width: dragOriginalSelection.width, height: dragOriginalSelection.maxY - newMinY)
-
-        case .resizeB:
-            let newMaxY = max(clamped.y, dragOriginalSelection.minY + 10)
-            selection = CGRect(x: dragOriginalSelection.minX, y: dragOriginalSelection.minY, width: dragOriginalSelection.width, height: newMaxY - dragOriginalSelection.minY)
-
-        case .resizeL:
-            let newMinX = min(clamped.x, dragOriginalSelection.maxX - 10)
-            selection = CGRect(x: newMinX, y: dragOriginalSelection.minY, width: dragOriginalSelection.maxX - newMinX, height: dragOriginalSelection.height)
-
-        case .resizeR:
-            let newMaxX = max(clamped.x, dragOriginalSelection.minX + 10)
-            selection = CGRect(x: dragOriginalSelection.minX, y: dragOriginalSelection.minY, width: newMaxX - dragOriginalSelection.minX, height: dragOriginalSelection.height)
+        case .resizeT, .resizeB, .resizeL, .resizeR:
+            resizeEdge(dragMode, clamped: clamped)
 
         case .none:
             break
+        }
+    }
+
+    private func resizeCorner(_ mode: DragMode, clamped: CGPoint) {
+        let orig = dragOriginalSelection
+
+        // Determine anchor corner (opposite to the one being dragged)
+        let anchorX: CGFloat
+        let anchorY: CGFloat
+        var rawW: CGFloat
+        var rawH: CGFloat
+
+        switch mode {
+        case .resizeBR:
+            anchorX = orig.minX; anchorY = orig.minY
+            rawW = max(10, clamped.x - anchorX); rawH = max(10, clamped.y - anchorY)
+        case .resizeBL:
+            anchorX = orig.maxX; anchorY = orig.minY
+            rawW = max(10, anchorX - clamped.x); rawH = max(10, clamped.y - anchorY)
+        case .resizeTR:
+            anchorX = orig.minX; anchorY = orig.maxY
+            rawW = max(10, clamped.x - anchorX); rawH = max(10, anchorY - clamped.y)
+        case .resizeTL:
+            anchorX = orig.maxX; anchorY = orig.maxY
+            rawW = max(10, anchorX - clamped.x); rawH = max(10, anchorY - clamped.y)
+        default: return
+        }
+
+        if let ratio = lockedAspectRatio {
+            if rawW / ratio > rawH {
+                rawW = rawH * ratio
+            } else {
+                rawH = rawW / ratio
+            }
+        }
+
+        let x: CGFloat
+        let y: CGFloat
+        switch mode {
+        case .resizeBR: x = anchorX; y = anchorY
+        case .resizeBL: x = anchorX - rawW; y = anchorY
+        case .resizeTR: x = anchorX; y = anchorY - rawH
+        case .resizeTL: x = anchorX - rawW; y = anchorY - rawH
+        default: return
+        }
+
+        selection = CGRect(x: x, y: y, width: rawW, height: rawH)
+    }
+
+    private func resizeEdge(_ mode: DragMode, clamped: CGPoint) {
+        let orig = dragOriginalSelection
+
+        if let ratio = lockedAspectRatio {
+            // When aspect ratio is locked, edge resizing adjusts both dimensions
+            var rawW: CGFloat
+            var rawH: CGFloat
+            switch mode {
+            case .resizeR:
+                rawW = max(10, clamped.x - orig.minX)
+                rawH = rawW / ratio
+            case .resizeL:
+                rawW = max(10, orig.maxX - clamped.x)
+                rawH = rawW / ratio
+            case .resizeB:
+                rawH = max(10, clamped.y - orig.minY)
+                rawW = rawH * ratio
+            case .resizeT:
+                rawH = max(10, orig.maxY - clamped.y)
+                rawW = rawH * ratio
+            default: return
+            }
+
+            let cx = orig.midX
+            let cy = orig.midY
+            var x = cx - rawW / 2
+            var y = cy - rawH / 2
+            x = max(0, min(x, bounds.width - rawW))
+            y = max(0, min(y, bounds.height - rawH))
+            selection = CGRect(x: x, y: y, width: rawW, height: rawH)
+        } else {
+            switch mode {
+            case .resizeT:
+                let newMinY = min(clamped.y, orig.maxY - 10)
+                selection = CGRect(x: orig.minX, y: newMinY, width: orig.width, height: orig.maxY - newMinY)
+            case .resizeB:
+                let newMaxY = max(clamped.y, orig.minY + 10)
+                selection = CGRect(x: orig.minX, y: orig.minY, width: orig.width, height: newMaxY - orig.minY)
+            case .resizeL:
+                let newMinX = min(clamped.x, orig.maxX - 10)
+                selection = CGRect(x: newMinX, y: orig.minY, width: orig.maxX - newMinX, height: orig.height)
+            case .resizeR:
+                let newMaxX = max(clamped.x, orig.minX + 10)
+                selection = CGRect(x: orig.minX, y: orig.minY, width: newMaxX - orig.minX, height: orig.height)
+            default: break
+            }
         }
     }
 

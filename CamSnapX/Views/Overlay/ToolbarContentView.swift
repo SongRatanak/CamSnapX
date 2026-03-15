@@ -12,10 +12,61 @@ enum ToolbarAction {
     case area, fullscreen, window, scrolling, timer, ocr, recording
 }
 
+enum AspectRatioPreset: Hashable {
+    case freeform
+    case ratio(Double, Double)
+
+    var label: String {
+        switch self {
+        case .freeform: return "Freeform"
+        case .ratio(1, 1): return "1 : 1 (Square)"
+        case .ratio(5, 4): return "5 : 4 (10 : 8)"
+        case .ratio(4, 3): return "4 : 3"
+        case .ratio(7, 5): return "7 : 5"
+        case .ratio(3, 2): return "3 : 2 (6 : 4)"
+        case .ratio(16, 10): return "16 : 10"
+        case .ratio(16, 9): return "16 : 9"
+        case .ratio(1.85, 1): return "1.85 : 1"
+        case .ratio(2.35, 1): return "2.35 : 1"
+        case .ratio(4, 5): return "4 : 5"
+        case .ratio(2, 3): return "2 : 3"
+        case .ratio(9, 16): return "9 : 16"
+        case let .ratio(w, h): return "\(w) : \(h)"
+        }
+    }
+
+    /// Returns width / height as a CGFloat, or nil for freeform.
+    var value: CGFloat? {
+        switch self {
+        case .freeform: return nil
+        case let .ratio(w, h): return CGFloat(w) / CGFloat(h)
+        }
+    }
+
+    static let landscape: [AspectRatioPreset] = [
+        .ratio(1, 1),
+        .ratio(5, 4),
+        .ratio(4, 3),
+        .ratio(7, 5),
+        .ratio(3, 2),
+        .ratio(16, 10),
+        .ratio(16, 9),
+        .ratio(1.85, 1),
+        .ratio(2.35, 1),
+    ]
+
+    static let portrait: [AspectRatioPreset] = [
+        .ratio(4, 5),
+        .ratio(2, 3),
+        .ratio(9, 16),
+    ]
+}
+
 final class ToolbarModel: ObservableObject {
     @Published var selectionWidth: Int = 0
     @Published var selectionHeight: Int = 0
     @Published var isUserEditing: Bool = false
+    @Published var aspectRatio: AspectRatioPreset = .freeform
 }
 
 struct ToolbarContentView: View {
@@ -23,6 +74,7 @@ struct ToolbarContentView: View {
     @ObservedObject var model: ToolbarModel
     var onSizeChanged: ((Int, Int) -> Void)?
     var onToggleFullscreen: (() -> Void)?
+    var onAspectRatioChanged: ((AspectRatioPreset) -> Void)?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -54,7 +106,9 @@ struct ToolbarContentView: View {
                     height: model.selectionHeight,
                     onSizeChanged: onSizeChanged,
                     onToggleFullscreen: onToggleFullscreen,
-                    isUserEditing: model.isUserEditing
+                    onAspectRatioChanged: onAspectRatioChanged,
+                    isUserEditing: model.isUserEditing,
+                    aspectRatio: model.aspectRatio
                 )
             }
         }

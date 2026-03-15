@@ -18,6 +18,7 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
     private var escMonitor: Any?
     private var scrollingPanel: NSPanel?
     private var scrollingControlPanel: NSPanel?
+    private var selectionBorderPanel: NSPanel?
     private let scrollingViewModel = ScrollingCaptureViewModel()
     private var currentSelectionRect: CGRect = .zero
     private var currentScreen: NSScreen?
@@ -82,6 +83,7 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
         }
         toolbarPanel?.orderOut(nil)
         toolbarPanel = nil
+        hideSelectionBorder()
         hideScrollingCaptureShelf()
         hideScrollingCaptureControls()
         stopScrollMonitor()
@@ -264,6 +266,9 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
             toolbarView.onToggleFullscreen = { [weak self] in
                 self?.toggleFullscreenSelection()
             }
+            toolbarView.onAspectRatioChanged = { [weak self] preset in
+                self?.applyAspectRatio(preset)
+            }
             tp.contentView = NSHostingView(rootView: toolbarView)
             toolbarPanel = tp
         }
@@ -299,6 +304,36 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
         newX = max(0, min(newX, overlayView.bounds.width - clampedWidth))
         newY = max(0, min(newY, overlayView.bounds.height - clampedHeight))
         overlayView.selection = CGRect(x: newX, y: newY, width: clampedWidth, height: clampedHeight)
+    }
+
+    private func applyAspectRatio(_ preset: AspectRatioPreset) {
+        toolbarModel.aspectRatio = preset
+        activeOverlayView?.lockedAspectRatio = preset.value
+
+        // Resize the current selection to match the new aspect ratio
+        guard let ratio = preset.value else { return }
+        guard let overlayView = activeOverlayView else { return }
+        let sel = overlayView.selection
+        guard sel.width > 2, sel.height > 2 else { return }
+
+        let currentRatio = sel.width / sel.height
+        var newWidth = sel.width
+        var newHeight = sel.height
+        if currentRatio > ratio {
+            // Too wide — shrink width
+            newWidth = sel.height * ratio
+        } else {
+            // Too tall — shrink height
+            newHeight = sel.width / ratio
+        }
+        newWidth = min(newWidth, overlayView.bounds.width)
+        newHeight = min(newHeight, overlayView.bounds.height)
+
+        var newX = sel.midX - newWidth / 2
+        var newY = sel.midY - newHeight / 2
+        newX = max(0, min(newX, overlayView.bounds.width - newWidth))
+        newY = max(0, min(newY, overlayView.bounds.height - newHeight))
+        overlayView.selection = CGRect(x: newX, y: newY, width: newWidth, height: newHeight)
     }
 
     private func toggleFullscreenSelection() {
@@ -488,7 +523,40 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
         scrollingControlPanel = nil
     }
 
+    // MARK: - Selection Border (visible during scrolling capture)
 
+    private func showSelectionBorder() {
+        guard let screen = currentScreen ?? NSScreen.main else { return }
+        hideSelectionBorder()
+
+        let selRect = screenRect(from: currentSelectionRect, screenFrame: screen.frame)
+
+        let panel = NonKeyPanel(
+            contentRect: selRect,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.hidesOnDeactivate = false
+        panel.ignoresMouseEvents = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.sharingType = .none
+
+        let borderView = SelectionBorderView(frame: NSRect(origin: .zero, size: selRect.size))
+        panel.contentView = borderView
+        selectionBorderPanel = panel
+        panel.orderFrontRegardless()
+    }
+
+    private func hideSelectionBorder() {
+        selectionBorderPanel?.orderOut(nil)
+        selectionBorderPanel = nil
+    }
 }
 
 // MARK: - Scroll Event Handling for Scrolling Capture
@@ -610,12 +678,16 @@ extension AllInOneOverlayController {
             toolbarPanel?.orderOut(nil)
             scrollingPanel?.orderOut(nil)
 
+            // Show a visible border around the capture area
+            showSelectionBorder()
+
             scrollingDeltaAccumulator = 0
             scrollingDirection = 0
             lastCaptureTime = 0
             startScrollMonitor()
         } else {
             stopScrollMonitor()
+            hideSelectionBorder()
             for panel in overlayPanels {
                 panel.ignoresMouseEvents = false
                 panel.alphaValue = 1

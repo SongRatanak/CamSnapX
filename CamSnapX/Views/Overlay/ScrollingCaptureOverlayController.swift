@@ -17,6 +17,7 @@ final class ScrollingCaptureOverlayController: NSObject, ScrollingCaptureDelegat
     private var activeOverlayView: OverlayContentView?
     private var escMonitor: Any?
     private var scrollingControlPanel: NSPanel?
+    private var selectionBorderPanel: NSPanel?
     private let scrollingCaptureManager = ScrollingCaptureManager()
     private let scrollingControlModel = ScrollingCaptureControlModel()
     private var currentSelectionRect: CGRect = .zero
@@ -82,6 +83,7 @@ final class ScrollingCaptureOverlayController: NSObject, ScrollingCaptureDelegat
         }
         escMonitor = nil
         hideScrollingCaptureControls()
+        hideSelectionBorder()
         hideStartButton()
         stopScrollMonitor()
         for panel in overlayPanels {
@@ -288,6 +290,41 @@ final class ScrollingCaptureOverlayController: NSObject, ScrollingCaptureDelegat
         scrollingControlPanel = nil
     }
 
+    // MARK: - Selection Border (visible during scrolling capture)
+
+    private func showSelectionBorder() {
+        guard let screen = currentScreen ?? NSScreen.main else { return }
+        hideSelectionBorder()
+
+        let selRect = screenRect(from: currentSelectionRect, screenFrame: screen.frame)
+
+        let panel = NonKeyPanel(
+            contentRect: selRect,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.hidesOnDeactivate = false
+        panel.ignoresMouseEvents = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.sharingType = .none
+
+        let borderView = SelectionBorderView(frame: NSRect(origin: .zero, size: selRect.size))
+        panel.contentView = borderView
+        selectionBorderPanel = panel
+        panel.orderFrontRegardless()
+    }
+
+    private func hideSelectionBorder() {
+        selectionBorderPanel?.orderOut(nil)
+        selectionBorderPanel = nil
+    }
+
     func closeOverlay() {
         close()
     }
@@ -312,12 +349,14 @@ final class ScrollingCaptureOverlayController: NSObject, ScrollingCaptureDelegat
                 panel.ignoresMouseEvents = true
                 panel.alphaValue = 0
             }
+            showSelectionBorder()
             scrollingDeltaAccumulator = 0
             scrollingDirection = 0
             lastCaptureTime = 0
             startScrollMonitor()
         } else {
             stopScrollMonitor()
+            hideSelectionBorder()
             for panel in overlayPanels {
                 panel.ignoresMouseEvents = false
                 panel.alphaValue = 1
