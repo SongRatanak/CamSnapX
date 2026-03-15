@@ -244,7 +244,7 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
                 case .area: self?.captureCurrentArea()
                 case .fullscreen: self?.activeOverlayView?.onCaptureFullscreen?()
                 case .window: self?.activeOverlayView?.onCaptureWindow?()
-                case .scrolling: self?.showScrollingCaptureShelf()
+                case .scrolling: self?.scrollingCaptureManager.startScrollingCapture()
                 case .timer: break
                 case .ocr: self?.captureCurrentAreaOCR()
                 case .recording: break
@@ -451,7 +451,6 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
         // Reset control model
         scrollingControlModel.previewImage = nil
         scrollingControlModel.capturedHeight = 0
-
         let controlSize = CGSize(width: 248, height: 252)
         let panel = ToolbarPanel(
             contentRect: NSRect(x: 0, y: 0, width: controlSize.width, height: controlSize.height),

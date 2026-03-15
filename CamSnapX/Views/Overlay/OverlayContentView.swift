@@ -269,6 +269,10 @@ final class OverlayContentView: NSView {
     }
 
     private func updateCursor(for point: CGPoint) {
+        if !showsSelectionOverlay {
+            NSCursor.arrow.set()
+            return
+        }
         let mode = hitTestHandle(at: point)
         switch mode {
         case .resizeTL, .resizeBR: NSCursor.crosshair.set()

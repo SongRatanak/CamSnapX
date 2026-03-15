@@ -7,6 +7,7 @@
 
 import AppKit
 import Foundation
+import Vision
 
 protocol ScrollingCaptureDelegate: AnyObject {
     func showScrollingCaptureShelf()
@@ -25,20 +26,14 @@ final class ScrollingCaptureManager {
     weak var delegate: ScrollingCaptureDelegate?
 
     private(set) var isScrollingCaptureActive = false
-    private var stitchedImage: CGImage?
     private var lastFrame: CGImage?
     private var lastHash: UInt64 = 0
     private var targetWidth: Int = 0
-    private var autoScrollTimer: Timer?
     private var duplicateCount: Int = 0
-    /// Fingerprints of each new-content strip that was stitched, used to reject duplicates.
-    private var stripFingerprints: [[Double]] = []
+    /// Original captured strips (drawn once at delivery for max quality).
+    private var capturedStrips: [(image: CGImage, height: Int)] = []
+    private var totalStitchedHeight: Int = 0
 
-    // Auto-scroll is disabled; capture follows user scrolling.
-    private let autoScrollEnabled = false
-    private let scrollPixelsPerStep: Int32 = -280
-    private let scrollInterval: TimeInterval = 0.34
-    private let renderDelay: TimeInterval = 0.18
     private let maxDuplicatesBeforeStop: Int = 8
     private let duplicateHashThreshold: Int = 3
 
@@ -47,12 +42,12 @@ final class ScrollingCaptureManager {
     func startScrollingCapture() {
         guard !isScrollingCaptureActive else { return }
         isScrollingCaptureActive = true
-        stitchedImage = nil
         lastFrame = nil
         lastHash = 0
         targetWidth = 0
         duplicateCount = 0
-        stripFingerprints = []
+        capturedStrips = []
+        totalStitchedHeight = 0
         delegate?.hideScrollingCaptureShelf()
         delegate?.setSelectionOverlayVisible(false)
         delegate?.setPanelsIgnoreMouseEvents(true)
@@ -60,9 +55,6 @@ final class ScrollingCaptureManager {
 
         // Capture first frame immediately
         delegate?.captureScrollFrame()
-        if autoScrollEnabled {
-            startAutoScroll()
-        }
     }
 
     /// Called when user scrolls manually — capture a frame
@@ -72,7 +64,6 @@ final class ScrollingCaptureManager {
     }
 
     func endScrollingCapture(shouldCapture: Bool) {
-        stopAutoScroll()
         isScrollingCaptureActive = false
         delegate?.setSelectionOverlayVisible(true)
         delegate?.setPanelsIgnoreMouseEvents(false)
@@ -80,10 +71,10 @@ final class ScrollingCaptureManager {
         if shouldCapture {
             deliverResult()
         } else {
-            stitchedImage = nil
             lastFrame = nil
             targetWidth = 0
-            stripFingerprints = []
+            capturedStrips = []
+            totalStitchedHeight = 0
         }
     }
 
@@ -95,29 +86,28 @@ final class ScrollingCaptureManager {
         if targetWidth == 0 { targetWidth = tw }
 
         guard let previous = lastFrame else {
-            // First frame
+            // First frame — store the full frame as the first strip
             lastFrame = scaled
-            stitchedImage = scaled
             lastHash = averageHash(scaled) ?? 0
+            capturedStrips.append((image: scaled, height: scaled.height))
+            totalStitchedHeight = scaled.height
             delegate?.didUpdateStitchedPreview(scaled, totalHeight: scaled.height)
             return
         }
 
-        // Detect overlap using multi-band matching, then fallback row-signature matching.
-        guard let shift = detectShift(previous: previous, next: scaled)
+        // Primary: Apple Vision framework for precise alignment
+        // Fallback: multi-band template matching, then row-signature matching
+        guard let shift = detectShiftVision(previous: previous, next: scaled)
+            ?? detectShiftBand(previous: previous, next: scaled)
             ?? detectShiftByRowSignature(previous: previous, next: scaled) else {
             return
         }
 
-        // Check for true near-duplicate only after we have a measured shift.
+        // Check for near-duplicate (page bottom reached)
         if let hash = averageHash(scaled),
            hammingDistance(hash, lastHash) < duplicateHashThreshold,
            shift < 12 {
             duplicateCount += 1
-            if duplicateCount >= maxDuplicatesBeforeStop {
-                // Likely reached page bottom; stop auto-scroll and wait for user Done/Cancel.
-                stopAutoScroll()
-            }
             return
         } else {
             duplicateCount = 0
@@ -126,75 +116,63 @@ final class ScrollingCaptureManager {
         let overlap = scaled.height - shift
         guard overlap >= 10, shift >= 20 else { return }
 
-        let base = stitchedImage ?? previous
-
-        // Fingerprint the new content strip and check against all previously stitched strips
+        // Extract the new content strip
         let newContentHeight = scaled.height - overlap
         guard newContentHeight > 0 else { return }
-        if let newStrip = scaled.cropping(to: CGRect(x: 0, y: overlap, width: scaled.width, height: newContentHeight)) {
-            let fp = stripFingerprint(newStrip)
-            for existing in stripFingerprints {
-                if fingerprintDistance(fp, existing) < 4.0 {
-                    // This strip's content already exists in the stitched image — skip
-                    return
-                }
-            }
-            stripFingerprints.append(fp)
-        }
+        guard let newStrip = scaled.cropping(to: CGRect(x: 0, y: overlap, width: scaled.width, height: newContentHeight)) else { return }
 
-        if let result = stitchFrames(base: base, next: scaled, overlap: overlap) {
-            stitchedImage = result
-            lastFrame = scaled
-            lastHash = averageHash(scaled) ?? lastHash
-            delegate?.didUpdateStitchedPreview(result, totalHeight: result.height)
+        // Store the strip (drawn once at delivery for maximum quality)
+        capturedStrips.append((image: newStrip, height: newContentHeight))
+        totalStitchedHeight += newContentHeight
+        lastFrame = scaled
+        lastHash = averageHash(scaled) ?? lastHash
+
+        // Generate a quick preview
+        if let preview = buildPreviewImage() {
+            delegate?.didUpdateStitchedPreview(preview, totalHeight: totalStitchedHeight)
         }
     }
 
-    // MARK: - Auto-Scroll
+    // MARK: - Shift Detection (Apple Vision Framework)
 
-    private func startAutoScroll() {
-        stopAutoScroll()
-        autoScrollTimer = Timer.scheduledTimer(withTimeInterval: scrollInterval, repeats: true) { [weak self] _ in
-            self?.performScrollStep()
-        }
-    }
+    /// Uses VNTranslationalImageRegistrationRequest to find the precise vertical
+    /// pixel displacement between two frames. This is Apple's built-in image
+    /// alignment API — much more reliable than custom template matching.
+    private func detectShiftVision(previous: CGImage, next: CGImage) -> Int? {
+        let request = VNTranslationalImageRegistrationRequest(targetedCGImage: next)
 
-    private func stopAutoScroll() {
-        autoScrollTimer?.invalidate()
-        autoScrollTimer = nil
-    }
-
-    private func performScrollStep() {
-        guard isScrollingCaptureActive else {
-            stopAutoScroll()
-            return
+        let handler = VNImageRequestHandler(cgImage: previous)
+        do {
+            try handler.perform([request])
+        } catch {
+            return nil
         }
 
-        // Inject a scroll wheel event to scroll the page down
-        injectScrollEvent(deltaY: scrollPixelsPerStep)
-
-        // Wait for the page to render, then capture
-        DispatchQueue.main.asyncAfter(deadline: .now() + renderDelay) { [weak self] in
-            guard let self, self.isScrollingCaptureActive else { return }
-            self.delegate?.captureScrollFrame()
+        guard let result = request.results?.first as? VNImageTranslationAlignmentObservation else {
+            return nil
         }
+
+        // alignmentTransform.ty gives the vertical displacement in pixels.
+        // Positive ty means the next image is shifted DOWN relative to previous,
+        // which corresponds to scrolling down (content moved up).
+        let ty = result.alignmentTransform.ty
+
+        // We expect the content to have scrolled up, so ty should be negative
+        // (next image content is higher than previous). The shift is the absolute value.
+        // But Vision may report in either direction depending on coordinate system,
+        // so we take the absolute value and validate the range.
+        let rawShift = Int(abs(ty).rounded())
+
+        let minShift = max(10, Int(CGFloat(previous.height) * 0.03))
+        let maxShift = Int(CGFloat(previous.height) * 0.90)
+        guard rawShift >= minShift, rawShift <= maxShift else { return nil }
+
+        return rawShift
     }
 
-    private func injectScrollEvent(deltaY: Int32) {
-        guard let event = CGEvent(
-            scrollWheelEvent2Source: nil,
-            units: .pixel,
-            wheelCount: 1,
-            wheel1: deltaY,
-            wheel2: 0,
-            wheel3: 0
-        ) else { return }
-        event.post(tap: .cghidEventTap)
-    }
+    // MARK: - Shift Detection (multi-band template matching fallback)
 
-    // MARK: - Shift Detection (multi-band template matching)
-
-    private func detectShift(previous: CGImage, next: CGImage) -> Int? {
+    private func detectShiftBand(previous: CGImage, next: CGImage) -> Int? {
         let dsWidth = 300
         guard let prevSmall = resizeImage(previous, targetWidth: dsWidth),
               let nextSmall = resizeImage(next, targetWidth: dsWidth),
@@ -280,7 +258,7 @@ final class ScrollingCaptureManager {
         return fullShift
     }
 
-    // Fallback matcher for pages where mixed moving content (e.g. video + feed) confuses band matching.
+    // Fallback matcher for pages where mixed moving content confuses band matching.
     private func detectShiftByRowSignature(previous: CGImage, next: CGImage) -> Int? {
         let dsWidth = 220
         guard let prevSmall = resizeImage(previous, targetWidth: dsWidth),
@@ -393,83 +371,46 @@ final class ScrollingCaptureManager {
         return totalDiff / count
     }
 
-    // MARK: - Strip Fingerprinting (for duplicate detection)
+    // MARK: - Stitching (one-shot at delivery)
 
-    /// Creates a compact fingerprint of an image strip by dividing it into a grid
-    /// and computing the average luminance of each cell.
-    private func stripFingerprint(_ image: CGImage) -> [Double] {
-        let gridW = 16
-        let gridH = 8
-        guard let small = resizeImage(image, targetWidth: 160),
-              let data = small.dataProvider?.data,
-              let bytes = CFDataGetBytePtr(data) else {
-            return []
-        }
-        let w = small.width
-        let h = small.height
-        guard w > 0, h > 0 else { return [] }
-        let bpr = small.bytesPerRow
-        let cellW = max(1, w / gridW)
-        let cellH = max(1, h / gridH)
-        var result = [Double]()
-        result.reserveCapacity(gridW * gridH)
+    /// Combines all stored strips into a single full-quality image. Each strip is drawn
+    /// exactly once, so there is no quality loss from repeated re-drawing.
+    private func stitchAllStrips() -> CGImage? {
+        guard !capturedStrips.isEmpty else { return nil }
+        if capturedStrips.count == 1 { return capturedStrips[0].image }
 
-        for gy in 0..<gridH {
-            let startY = gy * cellH
-            guard startY < h else {
-                // Image too short for remaining grid rows — pad with 0
-                for _ in 0..<gridW { result.append(0) }
-                continue
-            }
-            let endY = min(startY + cellH, h)
-            for gx in 0..<gridW {
-                let startX = gx * cellW
-                guard startX < w else {
-                    result.append(0)
-                    continue
-                }
-                let endX = min(startX + cellW, w)
-                var sum = 0.0
-                var count = 0.0
-                for y in startY..<endY {
-                    let row = y * bpr
-                    for x in startX..<endX {
-                        let i = row + x * 4
-                        sum += 0.299 * Double(bytes[i]) + 0.587 * Double(bytes[i + 1]) + 0.114 * Double(bytes[i + 2])
-                        count += 1
-                    }
-                }
-                result.append(count > 0 ? sum / count : 0)
-            }
+        let width = targetWidth
+        guard let context = createRGBContext(width: width, height: totalStitchedHeight) else { return nil }
+
+        // Draw strips from top to bottom. In CGContext, y=0 is bottom,
+        // so the first strip goes at the highest y position.
+        var yOffset = totalStitchedHeight
+        for strip in capturedStrips {
+            yOffset -= strip.height
+            context.draw(strip.image, in: CGRect(x: 0, y: yOffset, width: strip.image.width, height: strip.height))
         }
-        return result
+
+        return context.makeImage()
     }
 
-    /// Mean absolute difference between two fingerprints.
-    private func fingerprintDistance(_ a: [Double], _ b: [Double]) -> Double {
-        guard a.count == b.count, !a.isEmpty else { return .greatestFiniteMagnitude }
-        var total = 0.0
-        for i in 0..<a.count {
-            total += abs(a[i] - b[i])
-        }
-        return total / Double(a.count)
-    }
+    /// Builds a low-res preview for the live preview panel.
+    private func buildPreviewImage() -> CGImage? {
+        guard !capturedStrips.isEmpty else { return nil }
+        if capturedStrips.count == 1 { return capturedStrips[0].image }
 
-    // MARK: - Stitching
+        let maxPreviewH = 2000
+        let scale = min(1.0, CGFloat(maxPreviewH) / CGFloat(totalStitchedHeight))
+        let previewW = max(1, Int(CGFloat(targetWidth) * scale))
+        let previewH = max(1, Int(CGFloat(totalStitchedHeight) * scale))
 
-    private func stitchFrames(base: CGImage, next: CGImage, overlap: Int) -> CGImage? {
-        let newContentHeight = next.height - overlap
-        guard newContentHeight > 0 else { return base }
+        guard let context = createRGBContext(width: previewW, height: previewH) else { return nil }
+        context.interpolationQuality = .low
 
-        let totalHeight = base.height + newContentHeight
-        let width = max(base.width, next.width)
-
-        guard let context = createRGBContext(width: width, height: totalHeight) else { return nil }
-
-        context.draw(base, in: CGRect(x: 0, y: newContentHeight, width: base.width, height: base.height))
-
-        if let newSlice = next.cropping(to: CGRect(x: 0, y: overlap, width: next.width, height: newContentHeight)) {
-            context.draw(newSlice, in: CGRect(x: 0, y: 0, width: next.width, height: newContentHeight))
+        var yOffset = CGFloat(previewH)
+        for strip in capturedStrips {
+            let stripH = CGFloat(strip.height) * scale
+            yOffset -= stripH
+            context.draw(strip.image, in: CGRect(x: 0, y: yOffset, width: CGFloat(previewW), height: stripH))
         }
 
         return context.makeImage()
@@ -478,8 +419,9 @@ final class ScrollingCaptureManager {
     // MARK: - Result Delivery
 
     private func deliverResult() {
-        let finalImage = stitchedImage ?? lastFrame
-        stitchedImage = nil
+        let finalImage = stitchAllStrips()
+        capturedStrips = []
+        totalStitchedHeight = 0
         lastFrame = nil
         targetWidth = 0
 

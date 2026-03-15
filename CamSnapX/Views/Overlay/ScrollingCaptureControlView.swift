@@ -19,6 +19,7 @@ final class ScrollingCaptureControlModel: ObservableObject {
     var capturedHeight: Int = 0 {
         didSet { objectWillChange.send() }
     }
+
 }
 
 struct ScrollingCaptureControlView: View {
@@ -68,6 +69,10 @@ struct ScrollingCaptureControlView: View {
                     .foregroundStyle(.white.opacity(0.5))
             }
 
+            Text("Scroll slowly for best results")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.white.opacity(0.5))
+
             HStack(spacing: 8) {
                 Button("Cancel") {
                     onCancel()
@@ -102,6 +107,11 @@ struct ScrollingCaptureControlView: View {
                 .fill(Color.black.opacity(0.92))
         )
         .environment(\.colorScheme, .dark)
+        .onHover { hovering in
+            if hovering {
+                NSCursor.arrow.set()
+            }
+        }
     }
 }
 
