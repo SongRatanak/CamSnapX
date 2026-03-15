@@ -53,14 +53,14 @@ struct ScrollingCaptureControlView: View {
                     }
                 }
             }
-            .frame(width: 220, height: 150)
+            .frame(width: 260, height: 180)
             .padding(.top, 10)
             .padding(.horizontal, 10)
 
             if showProgress {
                 ProgressView()
                     .progressViewStyle(.linear)
-                    .frame(width: 220, height: 4)
+                    .frame(width: 260, height: 4)
             }
 
             if model.capturedHeight > 0 {

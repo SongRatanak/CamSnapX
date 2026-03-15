@@ -451,7 +451,7 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
         // Reset control model
         scrollingControlModel.previewImage = nil
         scrollingControlModel.capturedHeight = 0
-        let controlSize = CGSize(width: 248, height: 252)
+        let controlSize = CGSize(width: 300, height: 292)
         let panel = ToolbarPanel(
             contentRect: NSRect(x: 0, y: 0, width: controlSize.width, height: controlSize.height),
             styleMask: [.borderless],
