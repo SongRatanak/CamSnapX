@@ -56,7 +56,10 @@ struct ContentView: View {
                     CaptureAreaController.shared.captureWindow()
                     dismiss()
                 }
-                MenuRowButton("Scrolling Capture", systemImage: "arrow.up.and.down.square") { }
+                MenuRowButton("Scrolling Capture", systemImage: "arrow.up.and.down.square") {
+                    ScrollingCaptureOverlayController.shared.show()
+                    dismiss()
+                }
                 MenuRowButton("Capture Text (OCR)", systemImage: "text.viewfinder") { }
                 MenuRowButton("Record Screen", systemImage: "record.circle") { }
                 Divider()

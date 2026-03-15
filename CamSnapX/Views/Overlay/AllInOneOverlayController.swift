@@ -13,6 +13,7 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
 
     private var overlayPanels: [NSPanel] = []
     private var toolbarPanel: NSPanel?
+    private let toolbarModel = ToolbarModel()
     private var activeOverlayView: OverlayContentView?
     private var escMonitor: Any?
     private var scrollingPanel: NSPanel?
@@ -111,7 +112,10 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
         panel.acceptsMouseMovedEvents = true
 
         if isPrimary {
-            let overlayView = OverlayContentView(frame: NSRect(origin: .zero, size: screen.frame.size))
+            let overlayView = OverlayContentView(
+                frame: NSRect(origin: .zero, size: screen.frame.size),
+                initialSelectionEnabled: true
+            )
             overlayView.screenFrame = screen.frame
             // Restore saved selection if available
             if let saved = savedSelection {
@@ -139,9 +143,7 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
                 }
             }
             overlayView.onAnyMouseDown = { [weak self] in
-                if let hostingView = self?.toolbarPanel?.contentView as? NSHostingView<ToolbarContentView> {
-                    hostingView.rootView.isUserEditing = false
-                }
+                self?.toolbarModel.isUserEditing = false
             }
             panel.contentView = overlayView
             activeOverlayView = overlayView
@@ -239,20 +241,23 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
             tp.hidesOnDeactivate = false
             tp.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-            var toolbarView = ToolbarContentView { [weak self] action in
-                switch action {
-                case .area: self?.captureCurrentArea()
-                case .fullscreen: self?.activeOverlayView?.onCaptureFullscreen?()
-                case .window: self?.activeOverlayView?.onCaptureWindow?()
-                case .scrolling: self?.scrollingCaptureManager.startScrollingCapture()
-                case .timer: break
-                case .ocr: self?.captureCurrentAreaOCR()
-                case .recording: break
-                }
-                if action != .scrolling {
-                    self?.hideScrollingCaptureShelf()
-                }
-            }
+            var toolbarView = ToolbarContentView(
+                onAction: { [weak self] action in
+                    switch action {
+                    case .area: self?.captureCurrentArea()
+                    case .fullscreen: self?.activeOverlayView?.onCaptureFullscreen?()
+                    case .window: self?.activeOverlayView?.onCaptureWindow?()
+                    case .scrolling: self?.scrollingCaptureManager.startScrollingCapture()
+                    case .timer: break
+                    case .ocr: self?.captureCurrentAreaOCR()
+                    case .recording: break
+                    }
+                    if action != .scrolling {
+                        self?.hideScrollingCaptureShelf()
+                    }
+                },
+                model: toolbarModel
+            )
             toolbarView.onSizeChanged = { [weak self] newWidth, newHeight in
                 self?.resizeSelection(to: CGSize(width: CGFloat(newWidth), height: CGFloat(newHeight)))
             }
@@ -265,16 +270,10 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
 
         toolbarPanel?.setFrame(NSRect(x: toolbarX, y: toolbarY, width: toolbarWidth, height: toolbarHeight), display: true, animate: false)
 
-        let newWidth = Int(effectiveSelection.width)
-        let newHeight = Int(effectiveSelection.height)
         currentSelectionRect = effectiveSelection
         currentScreen = screen
-        DispatchQueue.main.async { [weak self] in
-            if let hostingView = self?.toolbarPanel?.contentView as? NSHostingView<ToolbarContentView> {
-                hostingView.rootView.selectionWidth = newWidth
-                hostingView.rootView.selectionHeight = newHeight
-            }
-        }
+        toolbarModel.selectionWidth = Int(effectiveSelection.width)
+        toolbarModel.selectionHeight = Int(effectiveSelection.height)
 
         toolbarPanel?.orderFrontRegardless()
         updateScrollingShelfIfNeeded(selectionRect: effectiveSelection, screen: screen)
@@ -452,9 +451,9 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
         scrollingControlModel.previewImage = nil
         scrollingControlModel.capturedHeight = 0
         let controlSize = CGSize(width: 300, height: 292)
-        let panel = ToolbarPanel(
+        let panel = NonKeyPanel(
             contentRect: NSRect(x: 0, y: 0, width: controlSize.width, height: controlSize.height),
-            styleMask: [.borderless],
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )

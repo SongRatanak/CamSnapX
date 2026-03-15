@@ -151,6 +151,7 @@ private struct HistoryCard: View {
 
     @State private var thumbnail: NSImage?
     @State private var isHovering = false
+    @State private var fileMissing = false
 
     var body: some View {
         VStack(spacing: 10) {
@@ -159,7 +160,16 @@ private struct HistoryCard: View {
                     .fill(Color.white.opacity(0.08))
                     .frame(width: thumbWidth, height: thumbHeight)
 
-                if let thumbnail {
+                if fileMissing {
+                    VStack(spacing: 4) {
+                        Image(systemName: "photo.badge.exclamationmark")
+                            .font(.system(size: 20, weight: .light))
+                            .foregroundStyle(.white.opacity(0.3))
+                        Text("File missing")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.35))
+                    }
+                } else if let thumbnail {
                     Image(nsImage: thumbnail)
                         .resizable()
                         .scaledToFill()
@@ -167,7 +177,7 @@ private struct HistoryCard: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
 
-                if isHovering {
+                if isHovering && !fileMissing {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(Color.black.opacity(0.4))
                         .frame(width: thumbWidth, height: thumbHeight)
@@ -203,14 +213,24 @@ private struct HistoryCard: View {
     private func loadThumbnail() {
         let url = item.fileURL
         DispatchQueue.global(qos: .utility).async {
-            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return }
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                DispatchQueue.main.async { fileMissing = true }
+                return
+            }
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+                DispatchQueue.main.async { fileMissing = true }
+                return
+            }
             let maxDim = max(thumbWidth, thumbHeight) * 2
             let options: [CFString: Any] = [
                 kCGImageSourceThumbnailMaxPixelSize: maxDim,
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true
             ]
-            guard let cgThumb = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return }
+            guard let cgThumb = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+                DispatchQueue.main.async { fileMissing = true }
+                return
+            }
             let nsImage = NSImage(cgImage: cgThumb, size: NSSize(width: cgThumb.width, height: cgThumb.height))
             DispatchQueue.main.async {
                 thumbnail = nsImage

@@ -5,19 +5,24 @@
 //  Created by SongRatanak on 13/3/26.
 //
 
+import Combine
 import SwiftUI
 
 enum ToolbarAction {
     case area, fullscreen, window, scrolling, timer, ocr, recording
 }
 
+final class ToolbarModel: ObservableObject {
+    @Published var selectionWidth: Int = 0
+    @Published var selectionHeight: Int = 0
+    @Published var isUserEditing: Bool = false
+}
+
 struct ToolbarContentView: View {
     let onAction: (ToolbarAction) -> Void
-    var selectionWidth: Int = 0
-    var selectionHeight: Int = 0
+    @ObservedObject var model: ToolbarModel
     var onSizeChanged: ((Int, Int) -> Void)?
     var onToggleFullscreen: (() -> Void)?
-    var isUserEditing: Bool = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -43,13 +48,13 @@ struct ToolbarContentView: View {
                     .fill(Color.black.opacity(0.92))
             )
 
-            if selectionWidth > 0 && selectionHeight > 0 {
+            if model.selectionWidth > 0 && model.selectionHeight > 0 {
                 SizeInputView(
-                    width: selectionWidth,
-                    height: selectionHeight,
+                    width: model.selectionWidth,
+                    height: model.selectionHeight,
                     onSizeChanged: onSizeChanged,
                     onToggleFullscreen: onToggleFullscreen,
-                    isUserEditing: isUserEditing
+                    isUserEditing: model.isUserEditing
                 )
             }
         }
@@ -101,7 +106,12 @@ struct ToolbarContentView: View {
 }
 
 #Preview {
-    ToolbarContentView(onAction: { _ in }, selectionWidth: 720, selectionHeight: 220)
-        .frame(width: 680, height: 56)
-        .background(.black)
+    ToolbarContentView(onAction: { _ in }, model: {
+        let m = ToolbarModel()
+        m.selectionWidth = 720
+        m.selectionHeight = 220
+        return m
+    }())
+    .frame(width: 680, height: 56)
+    .background(.black)
 }

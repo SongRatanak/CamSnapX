@@ -36,7 +36,8 @@ final class CaptureHistoryStore: ObservableObject {
     }
 
     func add(_ fileURL: URL) {
-        var updated = items
+        // Remove any existing entry for the same file to avoid duplicates
+        var updated = items.filter { $0.fileURL != fileURL }
         updated.insert(CaptureHistoryItem(fileURL: fileURL), at: 0)
         if updated.count > maximumItems {
             updated = Array(updated.prefix(maximumItems))
@@ -88,6 +89,16 @@ final class CaptureHistoryStore: ObservableObject {
         }
         retentionDays = userDefaults.object(forKey: retentionKey) as? Int
         applyRetention()
+        pruneInvalidFiles()
+    }
+
+    /// Remove history entries whose files no longer exist on disk.
+    private func pruneInvalidFiles() {
+        let before = items.count
+        items = items.filter { fileManager.fileExists(atPath: $0.fileURL.path) }
+        if items.count != before {
+            save()
+        }
     }
 
     private func applyRetention() {

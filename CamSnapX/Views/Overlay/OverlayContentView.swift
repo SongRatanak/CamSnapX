@@ -22,6 +22,18 @@ final class OverlayContentView: NSView {
         }
     }
 
+    var showsDimOverlay: Bool = true {
+        didSet {
+            needsDisplay = true
+        }
+    }
+
+    var showsScrollHint: Bool = false {
+        didSet {
+            needsDisplay = true
+        }
+    }
+
     var selection: CGRect = .zero {
         didSet {
             needsDisplay = true
@@ -47,15 +59,18 @@ final class OverlayContentView: NSView {
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    override init(frame frameRect: NSRect) {
+    init(frame frameRect: NSRect, initialSelectionEnabled: Bool = true) {
         super.init(frame: frameRect)
         wantsLayer = true
-
-        let initWidth = frameRect.width * 0.55
-        let initHeight = frameRect.height * 0.55
-        let x = (frameRect.width - initWidth) / 2
-        let y = (frameRect.height - initHeight) / 2
-        selection = CGRect(x: x, y: y, width: initWidth, height: initHeight)
+        if initialSelectionEnabled {
+            let initWidth = frameRect.width * 0.55
+            let initHeight = frameRect.height * 0.55
+            let x = (frameRect.width - initWidth) / 2
+            let y = (frameRect.height - initHeight) / 2
+            selection = CGRect(x: x, y: y, width: initWidth, height: initHeight)
+        } else {
+            selection = .zero
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -75,6 +90,11 @@ final class OverlayContentView: NSView {
             ctx.addRect(selection)
         }
         ctx.drawPath(using: .eoFill)
+
+        if showsScrollHint {
+            drawScrollHint(in: bounds)
+            return
+        }
 
         guard showsSelectionOverlay else { return }
         guard selection.width > 2, selection.height > 2 else { return }
@@ -124,6 +144,33 @@ final class OverlayContentView: NSView {
         attrStr.draw(at: CGPoint(x: labelRect.minX + labelPad, y: labelRect.minY + labelPad / 2))
     }
 
+    private func drawScrollHint(in bounds: CGRect) {
+        let message = "Drag to capture the scrolling part of the screen."
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 13, weight: .medium),
+            .foregroundColor: NSColor.black.withAlphaComponent(0.75)
+        ]
+        let attrStr = NSAttributedString(string: message, attributes: attrs)
+        let textSize = attrStr.size()
+        let padX: CGFloat = 14
+        let padY: CGFloat = 8
+        let bubbleSize = CGSize(width: textSize.width + padX * 2, height: textSize.height + padY * 2)
+        let bubbleRect = CGRect(
+            x: bounds.midX - bubbleSize.width / 2,
+            y: bounds.midY - bubbleSize.height / 2,
+            width: bubbleSize.width,
+            height: bubbleSize.height
+        )
+
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        let path = CGPath(roundedRect: bubbleRect, cornerWidth: bubbleRect.height / 2, cornerHeight: bubbleRect.height / 2, transform: nil)
+        ctx.setFillColor(NSColor.white.withAlphaComponent(0.9).cgColor)
+        ctx.addPath(path)
+        ctx.fillPath()
+
+        attrStr.draw(at: CGPoint(x: bubbleRect.minX + padX, y: bubbleRect.minY + padY))
+    }
+
     private func drawCornerL(ctx: CGContext, corner: CGPoint, dx: CGFloat, dy: CGFloat, len: CGFloat) {
         let thickness: CGFloat = 3
         ctx.setLineWidth(thickness)
@@ -169,6 +216,12 @@ final class OverlayContentView: NSView {
         let point = convert(event.locationInWindow, from: nil)
 
         onAnyMouseDown?()
+
+        if showsScrollHint {
+            showsScrollHint = false
+            showsSelectionOverlay = true
+            showsDimOverlay = true
+        }
 
         let mode = hitTestHandle(at: point)
         if mode != .none {

@@ -37,6 +37,9 @@ final class ScrollingCaptureManager {
     private let maxDuplicatesBeforeStop: Int = 8
     private let duplicateHashThreshold: Int = 3
 
+
+
+
     // MARK: - Public API
 
     func startScrollingCapture() {
