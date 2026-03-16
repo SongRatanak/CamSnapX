@@ -493,7 +493,7 @@ private extension ScrollingCaptureOverlayController {
 
         let delta = abs(rawDelta)
         let threshold = event.hasPreciseScrollingDeltas
-            ? max(60, scrollingCaptureThreshold * 0.5)
+            ? max(20, scrollingCaptureThreshold * 0.2)
             : scrollingCaptureThreshold
         scrollingDeltaAccumulator += delta
         if scrollingDeltaAccumulator >= threshold {
@@ -514,6 +514,24 @@ private extension ScrollingCaptureOverlayController {
                 }
                 scrollCaptureWorkItem = workItem
                 DispatchQueue.main.asyncAfter(deadline: .now() + scrollRenderDelay, execute: workItem)
+            }
+        }
+
+        // If the scroll ends before reaching the threshold, capture once anyway.
+        if event.phase == .ended || event.momentumPhase == .ended {
+            if scrollingDeltaAccumulator > 0 {
+                scrollingDeltaAccumulator = 0
+                let now = CACurrentMediaTime()
+                if now - lastCaptureTime >= minCaptureInterval {
+                    lastCaptureTime = now
+                    scrollCaptureWorkItem?.cancel()
+                    scrollCaptureWorkItem = nil
+                    let workItem = DispatchWorkItem { [weak self] in
+                        self?.scrollingCaptureManager.userDidScroll()
+                    }
+                    scrollCaptureWorkItem = workItem
+                    DispatchQueue.main.asyncAfter(deadline: .now() + scrollRenderDelay, execute: workItem)
+                }
             }
         }
     }

@@ -516,6 +516,13 @@ struct ImageViewerView: View {
                       annotationState.annotations[idx].tool == .text {
                 annotationState.annotations[idx].color = newValue
                 annotationState.onStateChanged?()
+            } else if let selectedID = annotationState.selectedAnnotationID,
+                      let idx = annotationState.annotations.firstIndex(where: { $0.id == selectedID }) {
+                let tool = annotationState.annotations[idx].tool
+                if tool == .arrow || tool == .line || tool == .rectangle || tool == .filledRectangle || tool == .circle || tool == .pen {
+                    annotationState.annotations[idx].color = newValue
+                    annotationState.onStateChanged?()
+                }
             }
         }
         .onChange(of: annotationState.annotations.map(\.id)) { _ in
