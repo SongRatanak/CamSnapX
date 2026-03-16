@@ -17,7 +17,7 @@ final class PreviewPanel: NSPanel {
 }
 
 struct CapturePreviewView: View {
-    let image: NSImage
+    @State var image: NSImage
     let fileURL: URL?
     let onClose: () -> Void
     let onCopy: () -> Void
@@ -33,8 +33,8 @@ struct CapturePreviewView: View {
             Image(nsImage: image)
                 .resizable()
                 .scaledToFill()
-                .frame(width: 180, height: 140)
-                .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                .frame(width: 160, height: 120)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .clipped()
                 .onDrag {
                     dismissWithAnimation()
@@ -42,9 +42,9 @@ struct CapturePreviewView: View {
                 }
 
             if isHovering {
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .fill(.ultraThinMaterial.opacity(0.9))
-                    .frame(width: 180, height: 140)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.black.opacity(0.45))
+                    .frame(width: 160, height: 120)
                     .allowsHitTesting(false)
 
                 VStack(spacing: 6) {
@@ -68,18 +68,31 @@ struct CapturePreviewView: View {
             VStack {
                 HStack {
                     Button(action: dismissWithAnimation) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 18, weight: .semibold))
-                            .frame(width: 24, height: 24)
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .frame(width: 22, height: 22)
+                            .background(Color.white.opacity(0.85), in: Circle())
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(Color.black.opacity(0.85))
+                    .opacity(isHovering ? 1 : 0)
+                    .allowsHitTesting(isHovering)
                     Spacer()
+                    Button(action: openImageViewer) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 12, weight: .bold))
+                            .frame(width: 22, height: 22)
+                            .background(Color.white.opacity(0.85), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.black.opacity(0.85))
+                    .opacity(isHovering ? 1 : 0)
+                    .allowsHitTesting(isHovering)
                 }
                 Spacer()
             }
             .padding(8)
-            .frame(width: 180, height: 140)
+            .frame(width: 160, height: 120)
         }
         .padding(6)
         .allowsHitTesting(!isDismissing)
@@ -95,6 +108,9 @@ struct CapturePreviewView: View {
 
     private func openImageViewer() {
         let viewer = ImageViewerController(image: image, fileURL: fileURL)
+        viewer.onImageUpdated = { newImage in
+            image = newImage
+        }
         ImageViewerController.activeViewers.append(viewer)
         viewer.show()
     }
@@ -109,20 +125,20 @@ struct CapturePreviewView: View {
         // Notify immediately so sibling panels relayout right away
         onClose()
 
-        // Animate the panel sliding left and fading out
+        // Fade + scale down
         guard let window else { return }
 
         let currentFrame = window.frame
         let targetFrame = NSRect(
-            x: currentFrame.origin.x - currentFrame.width - 20,
-            y: currentFrame.origin.y,
-            width: currentFrame.width,
-            height: currentFrame.height
+            x: currentFrame.midX - (currentFrame.width * 0.92) / 2,
+            y: currentFrame.midY - (currentFrame.height * 0.92) / 2,
+            width: currentFrame.width * 0.92,
+            height: currentFrame.height * 0.92
         )
 
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.35
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            context.duration = 0.18
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().setFrame(targetFrame, display: true)
             window.animator().alphaValue = 0
         }, completionHandler: {

@@ -47,6 +47,14 @@ final class CaptureHistoryStore: ObservableObject {
         save()
     }
 
+    func refresh(_ fileURL: URL) {
+        guard items.contains(where: { $0.fileURL == fileURL }) else { return }
+        var updated = items.filter { $0.fileURL != fileURL }
+        updated.insert(CaptureHistoryItem(fileURL: fileURL), at: 0)
+        items = updated
+        save()
+    }
+
     func clearWithConfirmation() {
         let alert = NSAlert()
         alert.messageText = "Delete Capture History"

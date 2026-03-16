@@ -43,7 +43,7 @@ struct MultiLineTextView: NSViewRepresentable {
         // The NSScrollView frame (set by SwiftUI .frame()) controls the available width.
         // widthTracksTextView = true means the container auto-sizes to:
         //   textView.width - 2 * textContainerInset.width
-        textView.textContainerInset = NSSize(width: 8, height: 6)
+        textView.textContainerInset = NSSize(width: 4, height: 4)
         textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.heightTracksTextView = false
@@ -71,7 +71,7 @@ struct MultiLineTextView: NSViewRepresentable {
         }
         textView.textColor = color
         textView.font = textStyle.font(ofSize: fontSize)
-        textView.textContainerInset = NSSize(width: 8, height: 6)
+        textView.textContainerInset = NSSize(width: 4, height: 4)
     }
 
     class Coordinator: NSObject, NSTextViewDelegate {
@@ -114,10 +114,12 @@ struct AnnotationTextEditor: View {
 
     private let circleDiameter: CGFloat = 14
     private let squareSize: CGFloat = 10
-    private let minBoxWidth: CGFloat = 100
-    private let minBoxHeight: CGFloat = 36
+    private let minBoxWidth: CGFloat = 40
+    private let minBoxHeight: CGFloat = 20
     private let emojiHeight: CGFloat = 26
     private let emojiSpacing: CGFloat = 4
+    private let textInsetX: CGFloat = 4
+    private let textInsetY: CGFloat = 4
 
     @State private var scaleStartFontSize: CGFloat? = nil
     @State private var scaleStartBoxWidth: CGFloat? = nil
@@ -136,7 +138,7 @@ struct AnnotationTextEditor: View {
         let font = textStyle.font(ofSize: fontSize)
         let displayText = text.isEmpty ? "Type here..." : text
         let attrs: [NSAttributedString.Key: Any] = [.font: font]
-        let constraintW: CGFloat = (boxWidth != nil) ? max(boxWidth! - 16, 1) : CGFloat.greatestFiniteMagnitude
+        let constraintW: CGFloat = (boxWidth != nil) ? max(boxWidth! - textInsetX * 2, 1) : CGFloat.greatestFiniteMagnitude
         let rect = (displayText as NSString).boundingRect(
             with: CGSize(width: constraintW, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
@@ -150,12 +152,12 @@ struct AnnotationTextEditor: View {
         if let bw = boxWidth {
             return max(bw, minBoxWidth)
         }
-        return max(measuredTextSize.width + 20, minBoxWidth)
+        return max(measuredTextSize.width + textInsetX * 2, minBoxWidth)
     }
 
     /// The effective box height: text height + padding, with a minimum
     private var boxHeight: CGFloat {
-        max(measuredTextSize.height + 16, minBoxHeight)
+        max(measuredTextSize.height + textInsetY * 2, minBoxHeight)
     }
 
     var body: some View {
@@ -439,7 +441,7 @@ struct OutlinedTextView: NSViewRepresentable {
         textView.isAutomaticDashSubstitutionEnabled = false
 
         // Let width tracking handle sizing from the scroll view frame
-        textView.textContainerInset = NSSize(width: 8, height: 6)
+        textView.textContainerInset = NSSize(width: 4, height: 4)
         textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.heightTracksTextView = false
@@ -491,7 +493,7 @@ struct OutlinedTextView: NSViewRepresentable {
         fillField.font = textStyle.font(ofSize: fontSize)
         textView.font = textStyle.font(ofSize: fontSize)
         textView.insertionPointColor = color
-        textView.textContainerInset = NSSize(width: 8, height: 6)
+        textView.textContainerInset = NSSize(width: 4, height: 4)
     }
 
     class Coordinator: NSObject, NSTextViewDelegate {

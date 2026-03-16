@@ -32,14 +32,21 @@ final class AnnotationRenderer {
         // Draw original image (CGContext y=0 is bottom)
         ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
 
-        // Flip for annotation drawing (annotations use top-left origin)
-        ctx.translateBy(x: 0, y: CGFloat(height))
+        // Map annotation coordinates (image.size points) into pixel space,
+        // then flip to top-left origin for annotation drawing.
+        let scaleX = CGFloat(width) / max(image.size.width, 1)
+        let scaleY = CGFloat(height) / max(image.size.height, 1)
+        ctx.saveGState()
+        ctx.scaleBy(x: scaleX, y: scaleY)
+        ctx.translateBy(x: 0, y: image.size.height)
         ctx.scaleBy(x: 1, y: -1)
 
         // Draw each annotation in image space
         for annotation in annotations {
             drawAnnotation(annotation, in: ctx)
         }
+
+        ctx.restoreGState()
 
         guard let result = ctx.makeImage() else { return image }
         return NSImage(cgImage: result, size: image.size)

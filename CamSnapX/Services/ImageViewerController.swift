@@ -14,6 +14,10 @@ final class ImageViewerController: NSObject, NSWindowDelegate {
     private let image: NSImage
     private let fileURL: URL?
     private let annotationState = AnnotationState()
+    var onImageUpdated: ((NSImage) -> Void)?
+    private var hasUnsavedChanges = false
+    private var commitPendingEdits: (() -> Void)?
+    private var isClosingWithConfirmation = false
 
     init(image: NSImage, fileURL: URL?) {
         self.image = image
@@ -49,6 +53,10 @@ final class ImageViewerController: NSObject, NSWindowDelegate {
             fileURL: fileURL,
             annotationState: annotationState,
             onDone: { [weak self] in self?.close() },
+            onDidModify: { [weak self] in self?.hasUnsavedChanges = true },
+            onRegisterCommitHandler: { [weak self] handler in
+                self?.commitPendingEdits = handler
+            },
             onSaveAs: { [weak self] annotatedImage in self?.saveAs(annotatedImage: annotatedImage) }
         )
 
@@ -75,8 +83,20 @@ final class ImageViewerController: NSObject, NSWindowDelegate {
     }
 
     func close() {
-        window?.close()
+        if !annotationState.annotations.isEmpty {
+            let rendered = AnnotationRenderer.render(
+                annotations: annotationState.annotations,
+                onto: image
+            )
+            if let fileURL {
+                overwriteImage(rendered, at: fileURL)
+                CaptureHistoryStore.shared.refresh(fileURL)
+            }
+        onImageUpdated?(rendered)
     }
+    hasUnsavedChanges = false
+    window?.close()
+}
 
     // MARK: - NSWindowDelegate
 
@@ -84,6 +104,33 @@ final class ImageViewerController: NSObject, NSWindowDelegate {
         window = nil
         NSApp.setActivationPolicy(.accessory)
         ImageViewerController.activeViewers.removeAll { $0 === self }
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard hasUnsavedChanges, !isClosingWithConfirmation else { return true }
+
+        let alert = NSAlert()
+        alert.messageText = "Do you want to save the changes you made to the screenshot?"
+        alert.informativeText = "Your changes will be lost if you don’t save them."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Don't Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.alertStyle = .warning
+
+        let response = alert.runModal()
+        switch response {
+        case .alertFirstButtonReturn:
+            commitPendingEdits?()
+            isClosingWithConfirmation = true
+            close()
+            return false
+        case .alertSecondButtonReturn:
+            isClosingWithConfirmation = true
+            sender.close()
+            return false
+        default:
+            return false
+        }
     }
 
     // MARK: - Save As
@@ -97,11 +144,19 @@ final class ImageViewerController: NSObject, NSWindowDelegate {
         guard let parentWindow = window else { return }
         panel.beginSheetModal(for: parentWindow) { response in
             guard response == .OK, let url = panel.url else { return }
-            guard let tiffData = annotatedImage.tiffRepresentation,
-                  let bitmap = NSBitmapImageRep(data: tiffData),
-                  let pngData = bitmap.representation(using: .png, properties: [:]) else { return }
-            try? pngData.write(to: url, options: .atomic)
+            self.writePNG(annotatedImage, to: url)
         }
+    }
+
+    private func overwriteImage(_ image: NSImage, at url: URL) {
+        writePNG(image, to: url)
+    }
+
+    private func writePNG(_ image: NSImage, to url: URL) {
+        guard let tiffData = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData),
+              let pngData = bitmap.representation(using: .png, properties: [:]) else { return }
+        try? pngData.write(to: url, options: .atomic)
     }
 
     // Keep active viewers alive
@@ -115,6 +170,8 @@ struct ImageViewerView: View {
     let fileURL: URL?
     @ObservedObject var annotationState: AnnotationState
     let onDone: () -> Void
+    let onDidModify: () -> Void
+    let onRegisterCommitHandler: (@escaping () -> Void) -> Void
     let onSaveAs: (NSImage) -> Void
 
     @State private var isEditingText = false
@@ -141,7 +198,7 @@ struct ImageViewerView: View {
                     )
                     onSaveAs(rendered)
                 },
-                onDone: onDone
+                onDone: handleDone
             )
 
             Divider()
@@ -258,6 +315,36 @@ struct ImageViewerView: View {
                 annotationState.annotations[idx].color = newValue
                 annotationState.onStateChanged?()
             }
+        }
+        .onChange(of: annotationState.annotations.map(\.id)) { _ in
+            onDidModify()
+        }
+        .onChange(of: annotationState.activeAnnotation?.id) { _ in
+            onDidModify()
+        }
+        .onChange(of: textEditContent) { _ in
+            if isEditingText {
+                onDidModify()
+            }
+        }
+        .onAppear {
+            onRegisterCommitHandler {
+                commitPendingEdits()
+            }
+        }
+    }
+
+    private func handleDone() {
+        commitPendingEdits()
+        onDone()
+    }
+
+    private func commitPendingEdits() {
+        if isEditingText {
+            commitTextAnnotation()
+        }
+        if annotationState.activeAnnotation != nil {
+            annotationState.commitActiveAnnotation()
         }
     }
 

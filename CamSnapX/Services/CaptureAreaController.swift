@@ -16,44 +16,48 @@ final class CaptureAreaController: NSObject {
     static let shared = CaptureAreaController()
 
     private var previewWindows: [NSPanel] = []
-    private var previewScreen: NSScreen?
     private var lastCapturedRect: CGRect?
-    private let previewSize = NSSize(width: 192, height: 152)
-    private let previewPadding: CGFloat = 16
-    private let previewSpacing: CGFloat = 12
+    private var lastUserScreen: NSScreen?
+    private var previewFollowTimer: Timer?
+    private var currentPreviewScreenKey: String?
+    private let previewSize = NSSize(width: 172, height: 132)
+    private let previewPadding: CGFloat = 12
+    private let previewSpacing: CGFloat = 8
 
     var hasPreviousArea: Bool {
         lastCapturedRect != nil
     }
 
     func startCapture() {
+        lastUserScreen = screenForPoint(NSEvent.mouseLocation)
         startSystemCapture(arguments: ["-i", "-c"])
     }
 
     func capturePreviousArea() {
         guard let rect = lastCapturedRect else { return }
+        lastUserScreen = screenForPoint(NSEvent.mouseLocation)
         Task { [weak self] in
             await self?.captureAndShow(rect: rect)
         }
     }
 
     func captureFullScreen() {
+        lastUserScreen = screenForPoint(NSEvent.mouseLocation)
         startSystemCapture(arguments: ["-c"])
     }
 
     func captureWindow() {
+        lastUserScreen = screenForPoint(NSEvent.mouseLocation)
         startSystemCapture(arguments: ["-i", "-w", "-c"])
     }
 
     func showPreview(for fileURL: URL) {
         guard let image = NSImage(contentsOf: fileURL) else { return }
-        let screen = screenForPoint(NSEvent.mouseLocation)
-        showPreview(with: image, fileURL: fileURL, on: screen)
+        showPreview(with: image, fileURL: fileURL, on: lastUserScreen ?? currentUserScreen())
     }
 
     func showPreviewForImage(_ image: NSImage) {
-        let screen = screenForPoint(NSEvent.mouseLocation)
-        showPreviewForImage(image, screen: screen)
+        showPreviewForImage(image, screen: lastUserScreen ?? currentUserScreen())
     }
 
     private func startSystemCapture(arguments: [String]) {
@@ -85,12 +89,12 @@ final class CaptureAreaController: NSObject {
         let captureRect = rect.intersection(unionRect)
         guard captureRect.width > 2, captureRect.height > 2 else { return }
         if let image = await captureWithScreenCaptureKit(rect: captureRect) {
-            showPreviewForImage(image, screen: screenForRect(captureRect))
+            showPreviewForImage(image, screen: lastUserScreen ?? currentUserScreen())
             return
         }
 
         if let image = captureWithScreencapture(rect: captureRect) {
-            showPreviewForImage(image, screen: screenForRect(captureRect))
+            showPreviewForImage(image, screen: lastUserScreen ?? currentUserScreen())
             return
         }
 
@@ -248,8 +252,11 @@ final class CaptureAreaController: NSObject {
     }
 
     private func saveImageToDesktop(image: NSImage, fileURL: URL?) -> URL? {
+        if let fileURL, FileManager.default.fileExists(atPath: fileURL.path) {
+            return overwriteImage(image, at: fileURL)
+        }
         let destinationURL = nextDesktopScreenshotURL()
-        return saveImage(image: image, fileURL: fileURL, to: destinationURL)
+        return saveImage(image: image, fileURL: nil, to: destinationURL)
     }
 
     private func saveImage(image: NSImage, fileURL: URL?, to destinationURL: URL) -> URL? {
@@ -286,11 +293,29 @@ final class CaptureAreaController: NSObject {
         }
     }
 
+    private func overwriteImage(_ image: NSImage, at url: URL) -> URL? {
+        guard let tiffData = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData),
+              let pngData = bitmap.representation(using: .png, properties: [:]) else {
+            return nil
+        }
+        do {
+            try pngData.write(to: url, options: .atomic)
+            print("Updated capture:", url.path)
+            CaptureHistoryStore.shared.refresh(url)
+            return url
+        } catch {
+            print("Failed to update capture:", url.path, error)
+            return nil
+        }
+    }
+
 
     private func showPreview(with image: NSImage, fileURL: URL?, on screen: NSScreen?) {
-        guard let screen else { return }
+        let targetScreen = screen ?? lastUserScreen ?? currentUserScreen()
+        guard let targetScreen else { return }
+        currentPreviewScreenKey = screenKey(for: targetScreen)
 
-        previewScreen = screen
         prunePreviewWindows()
         if let fileURL,
            let existing = previewWindows.first(where: { $0.representedURL == fileURL }) {
@@ -299,11 +324,14 @@ final class CaptureAreaController: NSObject {
             return
         }
 
-        let stackIndex = previewWindows.count
+        let stackIndex = previewWindows.filter { panel in
+            guard let panelScreen = panel.screen else { return false }
+            return panelScreen.frame == targetScreen.frame
+        }.count
         let stackedOffset = CGFloat(stackIndex) * (previewSize.height + previewSpacing)
         let origin = NSPoint(
-            x: screen.visibleFrame.minX + previewPadding,
-            y: screen.visibleFrame.minY + previewPadding + stackedOffset
+            x: targetScreen.visibleFrame.minX + previewPadding,
+            y: targetScreen.visibleFrame.minY + previewPadding + stackedOffset
         )
 
         let panel = PreviewPanel(
@@ -347,41 +375,49 @@ final class CaptureAreaController: NSObject {
         panel.makeKeyAndOrderFront(nil)
 
         previewWindows.append(panel)
+        startPreviewFollowTimerIfNeeded()
         relayoutPreviewWindows(animated: false)
     }
 
     private func prunePreviewWindows() {
         previewWindows.removeAll { !$0.isVisible }
+        if previewWindows.isEmpty {
+            stopPreviewFollowTimer()
+        }
     }
 
     private func relayoutPreviewWindows(animated: Bool) {
         prunePreviewWindows()
         guard !previewWindows.isEmpty else { return }
 
-        // Use the stored screen from when the previews were created
-        guard let targetScreen = previewScreen ?? previewWindows.first?.screen ?? NSScreen.main else { return }
+        let groupedPanels = Dictionary(grouping: previewWindows) { panel in
+            let screen = panel.screen ?? screenForPoint(panel.frame.origin) ?? NSScreen.main
+            let frame = screen?.frame ?? .zero
+            return "\(frame.origin.x),\(frame.origin.y),\(frame.size.width),\(frame.size.height)"
+        }
 
-        let orderedPanels = previewWindows
-            .sorted { $0.frame.origin.y < $1.frame.origin.y }
+        for (key, panels) in groupedPanels {
+            let targetScreen = screenForFrameKey(key) ?? panels.first?.screen ?? screenForPoint(panels.first?.frame.origin ?? .zero) ?? NSScreen.main
+            let orderedPanels = panels.sorted { $0.frame.origin.y < $1.frame.origin.y }
+            for (index, panel) in orderedPanels.enumerated() {
+                let stackedOffset = CGFloat(index) * (previewSize.height + previewSpacing)
+                let targetFrame = NSRect(
+                    x: (targetScreen?.visibleFrame.minX ?? 0) + previewPadding,
+                    y: (targetScreen?.visibleFrame.minY ?? 0) + previewPadding + stackedOffset,
+                    width: previewSize.width,
+                    height: previewSize.height
+                )
 
-        for (index, panel) in orderedPanels.enumerated() {
-            let stackedOffset = CGFloat(index) * (previewSize.height + previewSpacing)
-            let targetFrame = NSRect(
-                x: targetScreen.visibleFrame.minX + previewPadding,
-                y: targetScreen.visibleFrame.minY + previewPadding + stackedOffset,
-                width: previewSize.width,
-                height: previewSize.height
-            )
-
-            if animated {
-                NSAnimationContext.runAnimationGroup { context in
-                    context.duration = 0.3
-                    context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                    context.allowsImplicitAnimation = true
-                    panel.animator().setFrame(targetFrame, display: true)
+                if animated {
+                    NSAnimationContext.runAnimationGroup { context in
+                        context.duration = 0.3
+                        context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                        context.allowsImplicitAnimation = true
+                        panel.animator().setFrame(targetFrame, display: true)
+                    }
+                } else {
+                    panel.setFrame(targetFrame, display: true)
                 }
-            } else {
-                panel.setFrame(targetFrame, display: true)
             }
         }
     }
@@ -394,6 +430,75 @@ final class CaptureAreaController: NSObject {
     private func screenForPoint(_ point: CGPoint) -> NSScreen? {
         return NSScreen.screens.first { $0.frame.contains(point) } ?? NSScreen.main
     }
+
+    private func currentUserScreen() -> NSScreen? {
+        return screenForPoint(NSEvent.mouseLocation)
+    }
+
+    private func screenForFrameKey(_ key: String) -> NSScreen? {
+        for screen in NSScreen.screens {
+            let frame = screen.frame
+            let screenKey = "\(frame.origin.x),\(frame.origin.y),\(frame.size.width),\(frame.size.height)"
+            if screenKey == key {
+                return screen
+            }
+        }
+        return nil
+    }
+
+    private func screenKey(for screen: NSScreen) -> String {
+        let frame = screen.frame
+        return "\(frame.origin.x),\(frame.origin.y),\(frame.size.width),\(frame.size.height)"
+    }
+
+    private func startPreviewFollowTimerIfNeeded() {
+        guard previewFollowTimer == nil else { return }
+        previewFollowTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+            self?.updatePreviewScreenIfNeeded()
+        }
+    }
+
+    private func stopPreviewFollowTimer() {
+        previewFollowTimer?.invalidate()
+        previewFollowTimer = nil
+        currentPreviewScreenKey = nil
+    }
+
+    private func updatePreviewScreenIfNeeded() {
+        guard !previewWindows.isEmpty, let screen = currentUserScreen() else { return }
+        let key = screenKey(for: screen)
+        guard key != currentPreviewScreenKey else { return }
+        currentPreviewScreenKey = key
+        moveAllPreviews(to: screen)
+    }
+
+    private func moveAllPreviews(to screen: NSScreen) {
+        let orderedPanels = previewWindows.sorted { $0.frame.origin.y < $1.frame.origin.y }
+        for (index, panel) in orderedPanels.enumerated() {
+            let stackedOffset = CGFloat(index) * (previewSize.height + previewSpacing)
+            let targetFrame = NSRect(
+                x: screen.visibleFrame.minX + previewPadding,
+                y: screen.visibleFrame.minY + previewPadding + stackedOffset,
+                width: previewSize.width,
+                height: previewSize.height
+            )
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.08
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                context.allowsImplicitAnimation = true
+                panel.animator().alphaValue = 0
+            } completionHandler: {
+                panel.setFrame(targetFrame, display: true)
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.12
+                    context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                    context.allowsImplicitAnimation = true
+                    panel.animator().alphaValue = 1
+                }
+            }
+        }
+    }
+
 
     private func copyToPasteboard(image: NSImage, fileURL: URL?) {
         let pasteboard = NSPasteboard.general
