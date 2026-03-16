@@ -41,7 +41,7 @@ final class ImageViewerController: NSObject, NSWindowDelegate {
             windowWidth *= scale
             windowHeight *= scale
         }
-        windowWidth = max(windowWidth, 700)
+        windowWidth = max(windowWidth, 980)
         windowHeight = max(windowHeight, 400)
 
         let contentView = ImageViewerView(
@@ -61,7 +61,7 @@ final class ImageViewerController: NSObject, NSWindowDelegate {
         window.title = fileURL?.lastPathComponent ?? "CamSnapX Preview"
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.minSize = NSSize(width: 500, height: 300)
+        window.minSize = NSSize(width: 980, height: 300)
         window.contentView = NSHostingView(rootView: contentView)
         window.center()
 
@@ -158,6 +158,9 @@ struct ImageViewerView: View {
                         textEditStyle = annotationState.textStyle
                         imageToViewScale = scale
                         textEditFontSize = annotationState.fontSize
+                        if scale > 0 {
+                            annotationState.fontSize = textEditFontSize / scale
+                        }
                         isEditingText = true
                     },
                     onRequestEditTextAnnotation: { annotationID, currentText, viewPoint, scale in
@@ -169,6 +172,7 @@ struct ImageViewerView: View {
                             textEditFontSize = ann.fontSize * scale
                             textEditColor = ann.color
                             textEditStyle = ann.textStyle
+                            annotationState.fontSize = ann.fontSize
                         }
                         isEditingText = true
                     },
@@ -209,6 +213,11 @@ struct ImageViewerView: View {
             if isEditingText {
                 commitTextAnnotation()
             }
+        }
+        .onChange(of: textEditFontSize) { newValue in
+            guard isEditingText else { return }
+            let imageFontSize = imageToViewScale > 0 ? newValue / imageToViewScale : newValue
+            annotationState.fontSize = imageFontSize
         }
     }
 

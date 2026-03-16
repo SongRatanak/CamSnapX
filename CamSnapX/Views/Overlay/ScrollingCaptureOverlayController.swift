@@ -56,7 +56,8 @@ final class ScrollingCaptureOverlayController: NSObject, ScrollingCaptureDelegat
 
         // Create the same overlay on every screen (no "select this screen" prompt)
         for screen in NSScreen.screens {
-            let panel = createOverlayPanel(for: screen)
+            let isPrimary = (screen == mouseScreen)
+            let panel = createOverlayPanel(for: screen, isPrimary: isPrimary)
             overlayPanels.append(panel)
             panel.orderFrontRegardless()
         }
@@ -82,6 +83,9 @@ final class ScrollingCaptureOverlayController: NSObject, ScrollingCaptureDelegat
             NSEvent.removeMonitor(escMonitor)
         }
         escMonitor = nil
+        if scrollingCaptureManager.isScrollingCaptureActive {
+            scrollingCaptureManager.endScrollingCapture(shouldCapture: false)
+        }
         hideScrollingCaptureControls()
         hideSelectionBorder()
         hideStartButton()
@@ -96,7 +100,7 @@ final class ScrollingCaptureOverlayController: NSObject, ScrollingCaptureDelegat
 
     // MARK: - Panel Creation
 
-    private func createOverlayPanel(for screen: NSScreen) -> NSPanel {
+    private func createOverlayPanel(for screen: NSScreen, isPrimary: Bool) -> NSPanel {
         let panel = KeyableOverlayPanel(
             contentRect: screen.frame,
             styleMask: [.borderless],
@@ -136,8 +140,10 @@ final class ScrollingCaptureOverlayController: NSObject, ScrollingCaptureDelegat
         }
 
         panel.contentView = overlayView
-        activeOverlayView = overlayView
-        currentScreen = screen
+        if isPrimary {
+            activeOverlayView = overlayView
+            currentScreen = screen
+        }
 
         return panel
     }
@@ -474,32 +480,36 @@ private extension ScrollingCaptureOverlayController {
         }
 
         let delta = abs(rawDelta)
+        let threshold = event.hasPreciseScrollingDeltas
+            ? max(60, scrollingCaptureThreshold * 0.5)
+            : scrollingCaptureThreshold
         scrollingDeltaAccumulator += delta
-        if scrollingDeltaAccumulator >= scrollingCaptureThreshold {
+        if scrollingDeltaAccumulator >= threshold {
             scrollingDeltaAccumulator = 0
 
             let now = CACurrentMediaTime()
-            if now - lastCaptureTime >= minCaptureInterval {
+            let captureInterval = event.hasPreciseScrollingDeltas ? 0.35 : minCaptureInterval
+            if now - lastCaptureTime >= captureInterval {
                 lastCaptureTime = now
 
                 scrollCaptureWorkItem?.cancel()
+                let delay = event.hasPreciseScrollingDeltas ? 0.35 : scrollRenderDelay
                 let workItem = DispatchWorkItem { [weak self] in
                     self?.scrollingCaptureManager.userDidScroll()
                 }
                 scrollCaptureWorkItem = workItem
-                DispatchQueue.main.asyncAfter(deadline: .now() + scrollRenderDelay, execute: workItem)
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
             }
         }
     }
 
     func captureScrollingFrame() {
         guard scrollingCaptureManager.isScrollingCaptureActive else { return }
-        guard let overlayView = activeOverlayView else { return }
-
-        let selection = overlayView.selection
+        guard let screen = currentScreen else { return }
+        let selection = currentSelectionRect
         guard selection.width > 2, selection.height > 2 else { return }
 
-        let screenRect = self.screenRect(from: selection, screenFrame: overlayView.screenFrame)
+        let screenRect = self.screenRect(from: selection, screenFrame: screen.frame)
         Task { @MainActor [weak self] in
             guard let self else { return }
             if let cgImage = await CaptureAreaController.shared.capturePreviewCGImage(rect: screenRect) {

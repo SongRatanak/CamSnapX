@@ -712,7 +712,9 @@ final class AnnotationCanvasView: NSView {
                 )
                 guard startDist > 1 else { return }
                 let scaleFactor = currentDist / startDist
-                annotationState.annotations[idx].fontSize = max(resizeStartFontSize * scaleFactor, 8)
+                let newFontSize = max(resizeStartFontSize * scaleFactor, 8)
+                annotationState.annotations[idx].fontSize = newFontSize
+                annotationState.fontSize = newFontSize
                 annotationState.onStateChanged?()
             } else {
                 // Freeform resize: dragged corner moves to mouse, opposite corner stays anchored
