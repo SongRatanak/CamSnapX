@@ -120,10 +120,12 @@ struct ImageViewerView: View {
     @State private var isEditingText = false
     @State private var textEditImagePoint: CGPoint = .zero
     @State private var textEditPosition: CGPoint = .zero
+    @State private var textEditInitialViewPosition: CGPoint = .zero  // To compute move delta
     @State private var textEditContent: String = ""
     @State private var textEditFontSize: CGFloat = 20
     @State private var textEditColor: NSColor? = nil  // nil = use toolbar color
     @State private var textEditStyle: TextAnnotationStyle = .standard
+    @State private var textEditBoxWidth: CGFloat? = nil
     @State private var imageToViewScale: CGFloat = 1.0
     @State private var editingAnnotationID: UUID? = nil
 
@@ -153,25 +155,31 @@ struct ImageViewerView: View {
                         editingAnnotationID = nil
                         textEditImagePoint = imagePoint
                         textEditPosition = viewPoint
+                        textEditInitialViewPosition = viewPoint
                         textEditContent = ""
                         textEditColor = nil
                         textEditStyle = annotationState.textStyle
                         imageToViewScale = scale
-                        textEditFontSize = annotationState.fontSize
-                        if scale > 0 {
-                            annotationState.fontSize = textEditFontSize / scale
-                        }
+                        textEditFontSize = annotationState.fontSize * scale
+                        textEditBoxWidth = nil
                         isEditingText = true
                     },
                     onRequestEditTextAnnotation: { annotationID, currentText, viewPoint, scale in
                         editingAnnotationID = annotationID
                         textEditPosition = viewPoint
+                        textEditInitialViewPosition = viewPoint
                         textEditContent = currentText
                         imageToViewScale = scale
                         if let ann = annotationState.annotations.first(where: { $0.id == annotationID }) {
+                            textEditImagePoint = ann.boundingRect.origin
                             textEditFontSize = ann.fontSize * scale
                             textEditColor = ann.color
                             textEditStyle = ann.textStyle
+                            if let w = ann.textBoxWidth {
+                                textEditBoxWidth = w * scale
+                            } else {
+                                textEditBoxWidth = nil
+                            }
                             annotationState.fontSize = ann.fontSize
                         }
                         isEditingText = true
@@ -186,6 +194,7 @@ struct ImageViewerView: View {
                         .onTapGesture {
                             commitTextAnnotation()
                         }
+                        .allowsHitTesting(true)
                 }
 
                 // Text editing overlay — uses .position() internally
@@ -200,12 +209,16 @@ struct ImageViewerView: View {
                             isEditingText = false
                             textEditContent = ""
                             textEditColor = nil
+                            textEditBoxWidth = nil
                             editingAnnotationID = nil
                         },
                         position: $textEditPosition,
                         fontSize: $textEditFontSize,
-                        textStyle: textEditStyle
+                        textStyle: textEditStyle,
+                        boxWidth: $textEditBoxWidth,
+                        imageToViewScale: imageToViewScale
                     )
+                    .allowsHitTesting(true)
                 }
             }
         }
@@ -218,6 +231,33 @@ struct ImageViewerView: View {
             guard isEditingText else { return }
             let imageFontSize = imageToViewScale > 0 ? newValue / imageToViewScale : newValue
             annotationState.fontSize = imageFontSize
+        }
+        .onChange(of: annotationState.fontSize) { newValue in
+            guard isEditingText else { return }
+            let viewFontSize = imageToViewScale > 0 ? newValue * imageToViewScale : newValue
+            if abs(textEditFontSize - viewFontSize) > 0.5 {
+                textEditFontSize = viewFontSize
+            }
+        }
+        .onChange(of: annotationState.textStyle) { newValue in
+            if isEditingText {
+                textEditStyle = newValue
+            } else if let selectedID = annotationState.selectedAnnotationID,
+                      let idx = annotationState.annotations.firstIndex(where: { $0.id == selectedID }),
+                      annotationState.annotations[idx].tool == .text {
+                annotationState.annotations[idx].textStyle = newValue
+                annotationState.onStateChanged?()
+            }
+        }
+        .onChange(of: annotationState.selectedColor) { newValue in
+            if isEditingText {
+                textEditColor = newValue
+            } else if let selectedID = annotationState.selectedAnnotationID,
+                      let idx = annotationState.annotations.firstIndex(where: { $0.id == selectedID }),
+                      annotationState.annotations[idx].tool == .text {
+                annotationState.annotations[idx].color = newValue
+                annotationState.onStateChanged?()
+            }
         }
     }
 
@@ -237,12 +277,30 @@ struct ImageViewerView: View {
 
         // Convert view-space font size to image-space
         let imageFontSize = imageToViewScale > 0 ? textEditFontSize / imageToViewScale : textEditFontSize
+        let imageBoxWidth = (textEditBoxWidth ?? 0) > 0 && imageToViewScale > 0
+            ? textEditBoxWidth! / imageToViewScale
+            : nil
+
+        // Compute final image-space origin from any move delta during editing
+        let finalImagePoint: CGPoint
+        if imageToViewScale > 0 {
+            let deltaX = (textEditPosition.x - textEditInitialViewPosition.x) / imageToViewScale
+            let deltaY = (textEditPosition.y - textEditInitialViewPosition.y) / imageToViewScale
+            finalImagePoint = CGPoint(
+                x: textEditImagePoint.x + deltaX,
+                y: textEditImagePoint.y + deltaY
+            )
+        } else {
+            finalImagePoint = textEditImagePoint
+        }
 
         if let existingID = editingAnnotationID,
            let idx = annotationState.annotations.firstIndex(where: { $0.id == existingID }) {
             // Update existing text annotation
             annotationState.annotations[idx].text = textEditContent
             annotationState.annotations[idx].fontSize = imageFontSize
+            annotationState.annotations[idx].textBoxWidth = imageBoxWidth
+            annotationState.annotations[idx].boundingRect.origin = finalImagePoint
             annotationState.onStateChanged?()
         } else {
             // Create new text annotation
@@ -250,9 +308,10 @@ struct ImageViewerView: View {
                 tool: .text,
                 color: annotationState.selectedColor,
                 fontSize: imageFontSize,
-                textStyle: textEditStyle
+                textStyle: textEditStyle,
+                textBoxWidth: imageBoxWidth
             )
-            annotation.boundingRect = CGRect(origin: textEditImagePoint, size: .zero)
+            annotation.boundingRect = CGRect(origin: finalImagePoint, size: .zero)
             annotation.text = textEditContent
             annotationState.addAnnotation(annotation)
         }
@@ -260,6 +319,7 @@ struct ImageViewerView: View {
         isEditingText = false
         textEditContent = ""
         textEditColor = nil
+        textEditBoxWidth = nil
         editingAnnotationID = nil
     }
 }

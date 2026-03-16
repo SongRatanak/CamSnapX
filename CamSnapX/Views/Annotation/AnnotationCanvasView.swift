@@ -389,18 +389,35 @@ final class AnnotationCanvasView: NSView {
             .foregroundColor: annotation.color
         ]
         let attrStr = NSAttributedString(string: annotation.text, attributes: attrs)
+        let textMaxWidth = max((annotation.textBoxWidth ?? 0) * imageToViewScale - 8 * imageToViewScale, 1)
+        let constraintWidth = annotation.textBoxWidth == nil ? CGFloat.greatestFiniteMagnitude : textMaxWidth
         let textBounds = attrStr.boundingRect(
-            with: CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude),
+            with: CGSize(width: constraintWidth, height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading]
         )
-        let drawRect = CGRect(origin: viewPoint, size: textBounds.size)
+        let minW = 40 * imageToViewScale
+        let minH = 20 * imageToViewScale
+        let baseW = max(ceil(textBounds.width) + 8 * imageToViewScale, minW)
+        let baseH = max(ceil(textBounds.height) + 8 * imageToViewScale, minH)
+        let boxW = max(baseW, (annotation.textBoxWidth ?? 0) * imageToViewScale)
+        let boxRect = CGRect(origin: viewPoint, size: CGSize(width: boxW, height: baseH))
+        let padding = 4 * imageToViewScale
+        let drawRect = boxRect.insetBy(dx: padding, dy: padding)
 
-        // Draw background box if style requires it
+        // Draw tight background behind text (white, with style-specific corner radius)
         if annotation.textStyle.hasBackground {
-            let bgPadding: CGFloat = 4 * imageToViewScale
-            let bgRect = drawRect.insetBy(dx: -bgPadding, dy: -bgPadding)
-            ctx.setFillColor(annotation.color.withAlphaComponent(0.2).cgColor)
-            let bgPath = CGPath(roundedRect: bgRect, cornerWidth: 4 * imageToViewScale, cornerHeight: 4 * imageToViewScale, transform: nil)
+            ctx.setFillColor(NSColor.white.withAlphaComponent(0.85).cgColor)
+            let bgPadH: CGFloat = 8 * imageToViewScale
+            let bgPadV: CGFloat = 4 * imageToViewScale
+            let textW = ceil(textBounds.width)
+            let textH = ceil(textBounds.height)
+            let bgW = textW + bgPadH * 2
+            let bgH = textH + bgPadV * 2
+            let bgX = viewPoint.x + padding - bgPadH
+            let bgY = viewPoint.y + padding - bgPadV
+            let bgRect = CGRect(x: bgX, y: bgY, width: bgW, height: bgH)
+            let cornerRadius = annotation.textStyle.backgroundCornerRadius * imageToViewScale
+            let bgPath = CGPath(roundedRect: bgRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
             ctx.addPath(bgPath)
             ctx.fillPath()
         }
@@ -433,28 +450,9 @@ final class AnnotationCanvasView: NSView {
         let viewPoint = convert(event.locationInWindow, from: nil)
         let imagePoint = viewPointToImagePoint(viewPoint)
 
-        // Double-click on text → edit in-place (any tool)
-        if event.clickCount == 2 {
-            for annotation in annotationState.annotations.reversed() {
-                if annotation.tool == .text && annotation.hitBounds.contains(imagePoint) {
-                    let vp = imagePointToViewPoint(annotation.boundingRect.origin)
-                    onRequestEditTextAnnotation?(annotation.id, annotation.text, vp, imageToViewScale)
-                    return
-                }
-            }
-        }
-
-        // Cursor tool: single-click → select / move / resize
-        if annotationState.selectedTool == .cursor {
-            handleCursorMouseDown(viewPoint: viewPoint, imagePoint: imagePoint)
-            return
-        }
-
-        // Text tool: allow resize handles on selected text annotation
-        if annotationState.selectedTool == .text,
-           let selectedID = annotationState.selectedAnnotationID,
-           let annotation = annotationState.annotations.first(where: { $0.id == selectedID }),
-           annotation.tool == .text {
+        // Resize handles for selected annotation (any tool)
+        if let selectedID = annotationState.selectedAnnotationID,
+           let annotation = annotationState.annotations.first(where: { $0.id == selectedID }) {
             let handle = hitTestResizeHandle(viewPoint: viewPoint, annotation: annotation)
             if handle != .none {
                 isResizingSelection = true
@@ -474,6 +472,23 @@ final class AnnotationCanvasView: NSView {
                 }
                 return
             }
+        }
+
+        // Double-click on text → edit in-place (any tool)
+        if event.clickCount == 2 {
+            for annotation in annotationState.annotations.reversed() {
+                if annotation.tool == .text && annotation.hitBounds.contains(imagePoint) {
+                    let vp = imagePointToViewPoint(annotation.boundingRect.origin)
+                    onRequestEditTextAnnotation?(annotation.id, annotation.text, vp, imageToViewScale)
+                    return
+                }
+            }
+        }
+
+        // Cursor tool: single-click → select / move / resize
+        if annotationState.selectedTool == .cursor {
+            handleCursorMouseDown(viewPoint: viewPoint, imagePoint: imagePoint)
+            return
         }
 
         // Other tools: allow dragging existing annotations
@@ -680,6 +695,9 @@ final class AnnotationCanvasView: NSView {
         for annotation in annotationState.annotations.reversed() {
             if annotation.hitBounds.contains(imagePoint) {
                 annotationState.selectedAnnotationID = annotation.id
+                if annotation.tool == .text {
+                    annotationState.fontSize = annotation.fontSize
+                }
                 isDraggingSelection = true
                 lastDragImagePoint = imagePoint
                 NSCursor.closedHand.set()
@@ -700,22 +718,54 @@ final class AnnotationCanvasView: NSView {
 
         if isResizingSelection {
             if annotationState.annotations[idx].tool == .text {
-                // Text: scale font size based on drag distance from anchor
-                // Use resizeStartDragPoint (fixed) not lastDragImagePoint (changes)
-                let startDist = hypot(
-                    resizeStartDragPoint.x - resizeAnchorPoint.x,
-                    resizeStartDragPoint.y - resizeAnchorPoint.y
-                )
-                let currentDist = hypot(
-                    imagePoint.x - resizeAnchorPoint.x,
-                    imagePoint.y - resizeAnchorPoint.y
-                )
-                guard startDist > 1 else { return }
-                let scaleFactor = currentDist / startDist
-                let newFontSize = max(resizeStartFontSize * scaleFactor, 8)
-                annotationState.annotations[idx].fontSize = newFontSize
-                annotationState.fontSize = newFontSize
-                annotationState.onStateChanged?()
+                if resizeHandle == .midLeft || resizeHandle == .midRight {
+                    let margin: CGFloat = 6
+                    let hitWidth = annotationState.annotations[idx].hitBounds.width
+                    let currentBoxWidth = max(hitWidth - margin * 2, 40)
+
+                    let font = annotationState.annotations[idx].textStyle.font(ofSize: annotationState.annotations[idx].fontSize)
+                    let displayText = annotationState.annotations[idx].text.isEmpty ? "Text" : annotationState.annotations[idx].text
+                    let measured = (displayText as NSString).boundingRect(
+                        with: CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude),
+                        options: [.usesLineFragmentOrigin, .usesFontLeading],
+                        attributes: [.font: font]
+                    )
+                    let minWidth = max(ceil(measured.width) + 8, 40)
+
+                    let rightEdge = annotationState.annotations[idx].boundingRect.origin.x + currentBoxWidth
+                    let deltaX = imagePoint.x - lastDragImagePoint.x
+                    var newWidth: CGFloat
+                    var newOriginX = annotationState.annotations[idx].boundingRect.origin.x
+
+                    if resizeHandle == .midRight {
+                        newWidth = max(currentBoxWidth + deltaX, minWidth)
+                    } else {
+                        newWidth = max(currentBoxWidth - deltaX, minWidth)
+                        newOriginX = rightEdge - newWidth
+                    }
+
+                    annotationState.annotations[idx].textBoxWidth = newWidth
+                    annotationState.annotations[idx].boundingRect.origin.x = newOriginX
+                    lastDragImagePoint = imagePoint
+                    annotationState.onStateChanged?()
+                } else {
+                    // Text: scale font size based on drag distance from anchor
+                    // Use resizeStartDragPoint (fixed) not lastDragImagePoint (changes)
+                    let startDist = hypot(
+                        resizeStartDragPoint.x - resizeAnchorPoint.x,
+                        resizeStartDragPoint.y - resizeAnchorPoint.y
+                    )
+                    let currentDist = hypot(
+                        imagePoint.x - resizeAnchorPoint.x,
+                        imagePoint.y - resizeAnchorPoint.y
+                    )
+                    guard startDist > 1 else { return }
+                    let scaleFactor = currentDist / startDist
+                    let newFontSize = max(resizeStartFontSize * scaleFactor, 8)
+                    annotationState.annotations[idx].fontSize = newFontSize
+                    annotationState.fontSize = newFontSize
+                    annotationState.onStateChanged?()
+                }
             } else {
                 // Freeform resize: dragged corner moves to mouse, opposite corner stays anchored
                 let anchor = resizeAnchorPoint
@@ -820,9 +870,8 @@ final class AnnotationCanvasView: NSView {
     }
 
     private func updateCursorForPoint(viewPoint: CGPoint, imagePoint: CGPoint) {
-        // Check if hovering over a resize handle of selected annotation (cursor or text tool)
-        if (annotationState.selectedTool == .cursor || annotationState.selectedTool == .text),
-           let selectedID = annotationState.selectedAnnotationID,
+        // Check if hovering over a resize handle of selected annotation (any tool)
+        if let selectedID = annotationState.selectedAnnotationID,
            let annotation = annotationState.annotations.first(where: { $0.id == selectedID }) {
             let handle = hitTestResizeHandle(viewPoint: viewPoint, annotation: annotation)
             if handle != .none {
@@ -859,6 +908,9 @@ final class AnnotationCanvasView: NSView {
         for annotation in annotationState.annotations.reversed() {
             if annotation.hitBounds.contains(imagePoint) {
                 annotationState.selectedAnnotationID = annotation.id
+                if annotation.tool == .text {
+                    annotationState.fontSize = annotation.fontSize
+                }
                 isDraggingSelection = true
                 lastDragImagePoint = imagePoint
                 NSCursor.closedHand.set()

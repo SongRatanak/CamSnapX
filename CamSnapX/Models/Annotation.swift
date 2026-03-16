@@ -74,6 +74,16 @@ enum TextAnnotationStyle: String, CaseIterable {
     var isOutlined: Bool {
         self == .outlined
     }
+
+    /// Corner radius for background: Box/Mono Box = sharp, Rounded Box = rounded
+    var backgroundCornerRadius: CGFloat {
+        switch self {
+        case .monoBox: return 0
+        case .box: return 4
+        case .roundedBox: return 8
+        default: return 0
+        }
+    }
 }
 
 private extension NSFont {
@@ -96,6 +106,7 @@ struct Annotation: Identifiable {
     var text: String            // For text annotations
     var fontSize: CGFloat       // For text annotations
     var textStyle: TextAnnotationStyle  // For text annotations
+    var textBoxWidth: CGFloat?  // Optional override for text box width (image-space)
     var isComplete: Bool
 
     init(
@@ -106,7 +117,8 @@ struct Annotation: Identifiable {
         boundingRect: CGRect = .zero,
         text: String = "",
         fontSize: CGFloat = 20.0,
-        textStyle: TextAnnotationStyle = .standard
+        textStyle: TextAnnotationStyle = .standard,
+        textBoxWidth: CGFloat? = nil
     ) {
         self.id = UUID()
         self.tool = tool
@@ -117,6 +129,7 @@ struct Annotation: Identifiable {
         self.text = text
         self.fontSize = fontSize
         self.textStyle = textStyle
+        self.textBoxWidth = textBoxWidth
         self.isComplete = false
     }
 
@@ -147,14 +160,16 @@ struct Annotation: Identifiable {
         case .text:
             let font = textStyle.font(ofSize: fontSize)
             let displayText = text.isEmpty ? "Text" : text
+            let maxWidth = max((textBoxWidth ?? CGFloat.greatestFiniteMagnitude) - 8, 1)
             let measured = (displayText as NSString).boundingRect(
-                with: CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude),
+                with: CGSize(width: maxWidth, height: CGFloat.greatestFiniteMagnitude),
                 options: [.usesLineFragmentOrigin, .usesFontLeading],
                 attributes: [.font: font]
             )
-            let textW = max(ceil(measured.width) + 8, 40)
-            let textH = max(ceil(measured.height) + 4, 20)
-            return CGRect(origin: boundingRect.origin, size: CGSize(width: textW, height: textH))
+            let baseW = max(ceil(measured.width) + 8, 40)
+            let baseH = max(ceil(measured.height) + 8, 20)
+            let boxW = max(baseW, textBoxWidth ?? 0)
+            return CGRect(origin: boundingRect.origin, size: CGSize(width: boxW, height: baseH))
                 .insetBy(dx: -margin, dy: -margin)
         default:
             return .zero

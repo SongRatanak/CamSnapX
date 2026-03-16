@@ -150,18 +150,34 @@ final class AnnotationRenderer {
             .foregroundColor: annotation.color
         ]
         let attrStr = NSAttributedString(string: annotation.text, attributes: attrs)
+        let textMaxWidth = max((annotation.textBoxWidth ?? 0) - 8, 1)
+        let constraintWidth = annotation.textBoxWidth == nil ? CGFloat.greatestFiniteMagnitude : textMaxWidth
         let textBounds = attrStr.boundingRect(
-            with: CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude),
+            with: CGSize(width: constraintWidth, height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading]
         )
-        let drawRect = CGRect(origin: annotation.boundingRect.origin, size: textBounds.size)
+        let minW: CGFloat = 40
+        let minH: CGFloat = 20
+        let baseW = max(ceil(textBounds.width) + 8, minW)
+        let baseH = max(ceil(textBounds.height) + 8, minH)
+        let boxW = max(baseW, annotation.textBoxWidth ?? 0)
+        let boxRect = CGRect(origin: annotation.boundingRect.origin, size: CGSize(width: boxW, height: baseH))
+        let drawRect = boxRect.insetBy(dx: 4, dy: 4)
 
-        // Draw background box if style requires it
+        // Draw tight background behind text (white, with style-specific corner radius)
         if annotation.textStyle.hasBackground {
-            let bgPadding: CGFloat = 4
-            let bgRect = drawRect.insetBy(dx: -bgPadding, dy: -bgPadding)
-            ctx.setFillColor(annotation.color.withAlphaComponent(0.2).cgColor)
-            let bgPath = CGPath(roundedRect: bgRect, cornerWidth: 4, cornerHeight: 4, transform: nil)
+            ctx.setFillColor(NSColor.white.withAlphaComponent(0.85).cgColor)
+            let bgPadH: CGFloat = 8
+            let bgPadV: CGFloat = 4
+            let textW = ceil(textBounds.width)
+            let textH = ceil(textBounds.height)
+            let bgW = textW + bgPadH * 2
+            let bgH = textH + bgPadV * 2
+            let bgX = annotation.boundingRect.origin.x + 4 - bgPadH
+            let bgY = annotation.boundingRect.origin.y + 4 - bgPadV
+            let bgRect = CGRect(x: bgX, y: bgY, width: bgW, height: bgH)
+            let cornerRadius = annotation.textStyle.backgroundCornerRadius
+            let bgPath = CGPath(roundedRect: bgRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
             ctx.addPath(bgPath)
             ctx.fillPath()
         }

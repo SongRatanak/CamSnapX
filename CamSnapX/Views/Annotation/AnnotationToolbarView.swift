@@ -112,38 +112,64 @@ struct AnnotationToolbarView: View {
                         }
                         .buttonStyle(.plain)
 
-                        // Text style picker
-                        Menu {
-                            ForEach(TextAnnotationStyle.allCases, id: \.self) { style in
-                                Button {
-                                    state.textStyle = style
-                                } label: {
-                                    HStack {
-                                        textStylePreview(style)
-                                        Text(style.rawValue)
-                                        if state.textStyle == style {
-                                            Spacer()
-                                            Image(systemName: "checkmark")
-                                        }
+                // Text style picker
+                Button {
+                    showTextStylePicker.toggle()
+                } label: {
+                    HStack(spacing: 3) {
+                        Text("A")
+                            .font(.system(size: 14, weight: .bold, design: designForStyle(state.textStyle)))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8, weight: .semibold))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.primary.opacity(0.1))
+                    )
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showTextStylePicker, arrowEdge: .bottom) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            Text("Text")
+                                .font(.system(size: 18, weight: .bold))
+                            Text(state.textStyle.rawValue)
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.bottom, 6)
+
+                        ForEach(TextAnnotationStyle.allCases, id: \.self) { style in
+                            Button {
+                                state.textStyle = style
+                                showTextStylePicker = false
+                            } label: {
+                                HStack(spacing: 12) {
+                                    textStylePreview(style)
+                                    Text(style.rawValue)
+                                        .font(.system(size: 14, weight: .semibold))
+                                    Spacer(minLength: 0)
+                                    if state.textStyle == style {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 12, weight: .bold))
                                     }
                                 }
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 10)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(state.textStyle == style ? Color.accentColor.opacity(0.25) : Color.clear)
+                                )
                             }
-                        } label: {
-                            HStack(spacing: 3) {
-                                Text("A")
-                                    .font(.system(size: 14, weight: .bold, design: designForStyle(state.textStyle)))
-                                Image(systemName: "chevron.down")
-                                    .font(.system(size: 8, weight: .semibold))
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .fill(Color.primary.opacity(0.1))
-                            )
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
+                    .padding(12)
+                    .frame(width: 220)
+                }
+            }
                 }
                 .padding(.vertical, 2)
             }
@@ -201,18 +227,46 @@ struct AnnotationToolbarView: View {
 
     private func textStylePreview(_ style: TextAnnotationStyle) -> some View {
         let design: Font.Design = designForStyle(style)
-        return Text("Text")
-            .font(.system(size: 13, weight: .bold, design: design))
-            .padding(.horizontal, style.hasBackground ? 4 : 0)
-            .padding(.vertical, style.hasBackground ? 2 : 0)
-            .background(
-                Group {
-                    if style.hasBackground {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.primary.opacity(0.2))
-                    }
+        let corner = style.backgroundCornerRadius
+
+        return ZStack {
+            if style.hasBackground {
+                Text("Text")
+                    .font(.system(size: 13, weight: .bold, design: design))
+                    .foregroundStyle(Color(nsColor: state.selectedColor))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: corner, style: .continuous)
+                            .fill(Color.white.opacity(0.85))
+                    )
+            } else if style.isOutlined {
+                ZStack {
+                    Text("Text")
+                        .font(.system(size: 13, weight: .heavy, design: design))
+                        .foregroundStyle(.black.opacity(0.7))
+                        .offset(x: 0.6, y: 0.6)
+                    Text("Text")
+                        .font(.system(size: 13, weight: .heavy, design: design))
+                        .foregroundStyle(.black.opacity(0.7))
+                        .offset(x: -0.6, y: -0.6)
+                    Text("Text")
+                        .font(.system(size: 13, weight: .heavy, design: design))
+                        .foregroundStyle(.black.opacity(0.7))
+                        .offset(x: 0.6, y: -0.6)
+                    Text("Text")
+                        .font(.system(size: 13, weight: .heavy, design: design))
+                        .foregroundStyle(.black.opacity(0.7))
+                        .offset(x: -0.6, y: 0.6)
+                    Text("Text")
+                        .font(.system(size: 13, weight: .heavy, design: design))
+                        .foregroundStyle(.white)
                 }
-            )
+            } else {
+                Text("Text")
+                    .font(.system(size: 13, weight: .bold, design: design))
+            }
+        }
     }
 
     private func designForStyle(_ style: TextAnnotationStyle) -> Font.Design {
