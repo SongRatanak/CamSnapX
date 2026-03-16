@@ -72,34 +72,117 @@ final class AnnotationRenderer {
         let p1 = annotation.points[0]
         let p2 = annotation.points[1]
 
-        ctx.setStrokeColor(annotation.color.cgColor)
-        ctx.setLineWidth(annotation.lineWidth)
-        ctx.setLineCap(.round)
+        switch annotation.arrowStyle {
+        case .standard:
+            drawArrowLine(from: p1, to: p2, color: annotation.color, lineWidth: annotation.lineWidth, in: ctx)
+            drawArrowHead(at: p2, from: p1, color: annotation.color, lineWidth: annotation.lineWidth, filled: false, in: ctx)
+        case .fancy:
+            drawFancyArrow(from: p1, to: p2, color: annotation.color, lineWidth: annotation.lineWidth, in: ctx)
+        case .curved:
+            let control = annotation.curveControlPoint ?? curvedControlPoint(from: p1, to: p2)
+            drawCurvedArrowLine(from: p1, to: p2, control: control, color: annotation.color, lineWidth: annotation.lineWidth, in: ctx)
+            drawArrowHead(at: p2, from: control, color: annotation.color, lineWidth: annotation.lineWidth, filled: false, in: ctx)
+        case .double:
+            let control = annotation.curveControlPoint ?? CGPoint(x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2)
+            drawCurvedArrowLine(from: p1, to: p2, control: control, color: annotation.color, lineWidth: annotation.lineWidth, in: ctx)
+            drawArrowHead(at: p2, from: control, color: annotation.color, lineWidth: annotation.lineWidth, filled: false, in: ctx)
+            drawArrowHead(at: p1, from: control, color: annotation.color, lineWidth: annotation.lineWidth, filled: false, in: ctx)
+        }
+    }
 
+    private static func drawArrowLine(from p1: CGPoint, to p2: CGPoint, color: NSColor, lineWidth: CGFloat, in ctx: CGContext) {
+        ctx.setStrokeColor(color.cgColor)
+        ctx.setLineWidth(lineWidth)
+        ctx.setLineCap(.round)
         ctx.move(to: p1)
         ctx.addLine(to: p2)
         ctx.strokePath()
+    }
 
-        // Arrowhead
-        let angle = atan2(p2.y - p1.y, p2.x - p1.x)
-        let headLength = max(12, annotation.lineWidth * 5)
-        let headAngle: CGFloat = .pi / 6
+    private static func drawFancyArrow(from p1: CGPoint, to p2: CGPoint, color: NSColor, lineWidth: CGFloat, in ctx: CGContext) {
+        let dx = p2.x - p1.x
+        let dy = p2.y - p1.y
+        let distance = max(hypot(dx, dy), 1)
+        let ux = dx / distance
+        let uy = dy / distance
+        let px = -uy
+        let py = ux
 
-        let left = CGPoint(
-            x: p2.x - headLength * cos(angle - headAngle),
-            y: p2.y - headLength * sin(angle - headAngle)
-        )
-        let right = CGPoint(
-            x: p2.x - headLength * cos(angle + headAngle),
-            y: p2.y - headLength * sin(angle + headAngle)
-        )
+        let shaftWidth = max(2, lineWidth * 0.55)
+        let headWidth = max(14, lineWidth * 5.0)
+        let headLength = max(24, lineWidth * 9)
+        let shaftLength = max(distance - headLength, distance * 0.6)
+        let shaftEnd = CGPoint(x: p1.x + ux * shaftLength, y: p1.y + uy * shaftLength)
+        let headBase = CGPoint(x: p2.x - ux * headLength, y: p2.y - uy * headLength)
 
-        ctx.setFillColor(annotation.color.cgColor)
-        ctx.move(to: p2)
-        ctx.addLine(to: left)
-        ctx.addLine(to: right)
+        let tailLeft = CGPoint(x: p1.x + px * shaftWidth, y: p1.y + py * shaftWidth)
+        let tailRight = CGPoint(x: p1.x - px * shaftWidth, y: p1.y - py * shaftWidth)
+        let shaftLeft = CGPoint(x: shaftEnd.x + px * shaftWidth, y: shaftEnd.y + py * shaftWidth)
+        let shaftRight = CGPoint(x: shaftEnd.x - px * shaftWidth, y: shaftEnd.y - py * shaftWidth)
+        let headLeft = CGPoint(x: headBase.x + px * headWidth, y: headBase.y + py * headWidth)
+        let headRight = CGPoint(x: headBase.x - px * headWidth, y: headBase.y - py * headWidth)
+
+        ctx.setFillColor(color.cgColor)
+        ctx.beginPath()
+        ctx.move(to: tailLeft)
+        ctx.addLine(to: shaftLeft)
+        ctx.addLine(to: headLeft)
+        ctx.addLine(to: p2)
+        ctx.addLine(to: headRight)
+        ctx.addLine(to: shaftRight)
+        ctx.addLine(to: tailRight)
         ctx.closePath()
         ctx.fillPath()
+    }
+
+    private static func drawCurvedArrowLine(from p1: CGPoint, to p2: CGPoint, control: CGPoint, color: NSColor, lineWidth: CGFloat, in ctx: CGContext) {
+        ctx.setStrokeColor(color.cgColor)
+        ctx.setLineWidth(lineWidth)
+        ctx.setLineCap(.round)
+        ctx.move(to: p1)
+        ctx.addQuadCurve(to: p2, control: control)
+        ctx.strokePath()
+    }
+
+    private static func curvedControlPoint(from p1: CGPoint, to p2: CGPoint) -> CGPoint {
+        let mid = CGPoint(x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2)
+        let dx = p2.x - p1.x
+        let dy = p2.y - p1.y
+        let distance = max(hypot(dx, dy), 1)
+        let offset = min(40, max(14, distance * 0.2))
+        let perp = CGPoint(x: -dy / distance * offset, y: dx / distance * offset)
+        return CGPoint(x: mid.x + perp.x, y: mid.y + perp.y)
+    }
+
+
+    private static func drawArrowHead(at tip: CGPoint, from tail: CGPoint, color: NSColor, lineWidth: CGFloat, filled: Bool, headLength: CGFloat? = nil, headAngle: CGFloat = .pi / 6, in ctx: CGContext) {
+        let angle = atan2(tip.y - tail.y, tip.x - tail.x)
+        let resolvedLength = headLength ?? max(12, lineWidth * 5)
+
+        let left = CGPoint(
+            x: tip.x - resolvedLength * cos(angle - headAngle),
+            y: tip.y - resolvedLength * sin(angle - headAngle)
+        )
+        let right = CGPoint(
+            x: tip.x - resolvedLength * cos(angle + headAngle),
+            y: tip.y - resolvedLength * sin(angle + headAngle)
+        )
+
+        if filled {
+            ctx.setFillColor(color.cgColor)
+            ctx.move(to: tip)
+            ctx.addLine(to: left)
+            ctx.addLine(to: right)
+            ctx.closePath()
+            ctx.fillPath()
+        } else {
+            ctx.setStrokeColor(color.cgColor)
+            ctx.setLineWidth(lineWidth)
+            ctx.move(to: left)
+            ctx.addLine(to: tip)
+            ctx.addLine(to: right)
+            ctx.strokePath()
+        }
     }
 
     private static func drawRectangle(_ annotation: Annotation, in ctx: CGContext) {

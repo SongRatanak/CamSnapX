@@ -31,6 +31,7 @@ final class AnnotationCanvasView: NSView {
     private enum ResizeHandle {
         case none, topLeft, topRight, bottomLeft, bottomRight
         case midLeft, midRight   // For text annotations
+        case arrowStart, arrowEnd, arrowMid
     }
 
     // Crop state
@@ -256,6 +257,41 @@ final class AnnotationCanvasView: NSView {
             ctx.setStrokeColor(NSColor.systemBlue.cgColor)
             ctx.setLineWidth(2)
             ctx.stroke(sqRect)
+        } else if annotation.tool == .arrow, annotation.points.count >= 2 {
+            let start = imagePointToViewPoint(annotation.points[0])
+            let end = imagePointToViewPoint(annotation.points[1])
+            let points = [start, end]
+            for pt in points {
+                let circleRect = CGRect(
+                    x: pt.x - handleRadius,
+                    y: pt.y - handleRadius,
+                    width: handleRadius * 2,
+                    height: handleRadius * 2
+                )
+                ctx.setFillColor(NSColor.white.cgColor)
+                ctx.fillEllipse(in: circleRect)
+                ctx.setStrokeColor(NSColor.systemBlue.cgColor)
+                ctx.setLineWidth(2)
+                ctx.strokeEllipse(in: circleRect)
+            }
+            if annotation.arrowStyle == .curved || annotation.arrowStyle == .double {
+                let control = annotation.arrowStyle == .double
+                    ? (annotation.curveControlPoint ?? CGPoint(x: (annotation.points[0].x + annotation.points[1].x) / 2,
+                                                             y: (annotation.points[0].y + annotation.points[1].y) / 2))
+                    : (annotation.curveControlPoint ?? curvedControlPoint(from: annotation.points[0], to: annotation.points[1]))
+                let mid = imagePointToViewPoint(control)
+                let circleRect = CGRect(
+                    x: mid.x - handleRadius,
+                    y: mid.y - handleRadius,
+                    width: handleRadius * 2,
+                    height: handleRadius * 2
+                )
+                ctx.setFillColor(annotation.color.cgColor)
+                ctx.fillEllipse(in: circleRect)
+                ctx.setStrokeColor(NSColor.white.cgColor)
+                ctx.setLineWidth(2)
+                ctx.strokeEllipse(in: circleRect)
+            }
         } else {
             // Other annotations: dashed outline + circle corner handles
             ctx.setStrokeColor(NSColor.systemBlue.cgColor)
@@ -307,34 +343,124 @@ final class AnnotationCanvasView: NSView {
         let p2 = imagePointToViewPoint(annotation.points[1])
         let lw = annotation.lineWidth * imageToViewScale
 
-        ctx.setStrokeColor(annotation.color.cgColor)
-        ctx.setLineWidth(lw)
-        ctx.setLineCap(.round)
+        switch annotation.arrowStyle {
+        case .standard:
+            drawArrowLine(from: p1, to: p2, color: annotation.color, lineWidth: lw, in: ctx)
+            drawArrowHead(at: p2, from: p1, color: annotation.color, lineWidth: lw, filled: false, in: ctx)
+        case .fancy:
+            drawFancyArrow(from: p1, to: p2, color: annotation.color, lineWidth: lw, in: ctx)
+        case .curved:
+            let control = annotation.curveControlPoint ?? curvedControlPoint(from: p1, to: p2)
+            drawCurvedArrowLine(from: p1, to: p2, control: control, color: annotation.color, lineWidth: lw, in: ctx)
+            drawArrowHead(at: p2, from: control, color: annotation.color, lineWidth: lw, filled: false, in: ctx)
+        case .double:
+            let control = annotation.curveControlPoint ?? CGPoint(x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2)
+            drawCurvedArrowLine(from: p1, to: p2, control: control, color: annotation.color, lineWidth: lw, in: ctx)
+            drawArrowHead(at: p2, from: control, color: annotation.color, lineWidth: lw, filled: false, in: ctx)
+            drawArrowHead(at: p1, from: control, color: annotation.color, lineWidth: lw, filled: false, in: ctx)
+        }
+    }
 
+    private func drawArrowLine(from p1: CGPoint, to p2: CGPoint, color: NSColor, lineWidth: CGFloat, in ctx: CGContext) {
+        ctx.setStrokeColor(color.cgColor)
+        ctx.setLineWidth(lineWidth)
+        ctx.setLineCap(.round)
         ctx.move(to: p1)
         ctx.addLine(to: p2)
         ctx.strokePath()
+    }
 
-        // Arrowhead
-        let angle = atan2(p2.y - p1.y, p2.x - p1.x)
-        let headLength = max(12, lw * 5)
-        let headAngle: CGFloat = .pi / 6
+    private func drawFancyArrow(from p1: CGPoint, to p2: CGPoint, color: NSColor, lineWidth: CGFloat, in ctx: CGContext) {
+        let dx = p2.x - p1.x
+        let dy = p2.y - p1.y
+        let distance = max(hypot(dx, dy), 1)
+        let ux = dx / distance
+        let uy = dy / distance
+        let px = -uy
+        let py = ux
 
-        let left = CGPoint(
-            x: p2.x - headLength * cos(angle - headAngle),
-            y: p2.y - headLength * sin(angle - headAngle)
-        )
-        let right = CGPoint(
-            x: p2.x - headLength * cos(angle + headAngle),
-            y: p2.y - headLength * sin(angle + headAngle)
-        )
+        let shaftWidth = max(2, lineWidth * 0.55)
+        let headWidth = max(14, lineWidth * 5.0)
+        let headLength = max(24, lineWidth * 9)
+        let shaftLength = max(distance - headLength, distance * 0.6)
+        let shaftEnd = CGPoint(x: p1.x + ux * shaftLength, y: p1.y + uy * shaftLength)
+        let headBase = CGPoint(x: p2.x - ux * headLength, y: p2.y - uy * headLength)
 
-        ctx.setFillColor(annotation.color.cgColor)
-        ctx.move(to: p2)
-        ctx.addLine(to: left)
-        ctx.addLine(to: right)
+        let tailLeft = CGPoint(x: p1.x + px * shaftWidth, y: p1.y + py * shaftWidth)
+        let tailRight = CGPoint(x: p1.x - px * shaftWidth, y: p1.y - py * shaftWidth)
+        let shaftLeft = CGPoint(x: shaftEnd.x + px * shaftWidth, y: shaftEnd.y + py * shaftWidth)
+        let shaftRight = CGPoint(x: shaftEnd.x - px * shaftWidth, y: shaftEnd.y - py * shaftWidth)
+        let headLeft = CGPoint(x: headBase.x + px * headWidth, y: headBase.y + py * headWidth)
+        let headRight = CGPoint(x: headBase.x - px * headWidth, y: headBase.y - py * headWidth)
+
+        ctx.setFillColor(color.cgColor)
+        ctx.beginPath()
+        ctx.move(to: tailLeft)
+        ctx.addLine(to: shaftLeft)
+        ctx.addLine(to: headLeft)
+        ctx.addLine(to: p2)
+        ctx.addLine(to: headRight)
+        ctx.addLine(to: shaftRight)
+        ctx.addLine(to: tailRight)
         ctx.closePath()
         ctx.fillPath()
+    }
+
+    private func drawCurvedArrowLine(from p1: CGPoint, to p2: CGPoint, control: CGPoint, color: NSColor, lineWidth: CGFloat, in ctx: CGContext) {
+        ctx.setStrokeColor(color.cgColor)
+        ctx.setLineWidth(lineWidth)
+        ctx.setLineCap(.round)
+        ctx.move(to: p1)
+        ctx.addQuadCurve(to: p2, control: control)
+        ctx.strokePath()
+    }
+
+    private func curvedControlPoint(from p1: CGPoint, to p2: CGPoint) -> CGPoint {
+        let mid = CGPoint(x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2)
+        let dx = p2.x - p1.x
+        let dy = p2.y - p1.y
+        let distance = max(hypot(dx, dy), 1)
+        let offset = min(40, max(14, distance * 0.2))
+        let perp = CGPoint(x: -dy / distance * offset, y: dx / distance * offset)
+        return CGPoint(x: mid.x + perp.x, y: mid.y + perp.y)
+    }
+
+    private func quadraticMidpoint(from p1: CGPoint, to p2: CGPoint, control: CGPoint) -> CGPoint {
+        let t: CGFloat = 0.5
+        let oneMinusT = 1 - t
+        let x = oneMinusT * oneMinusT * p1.x + 2 * oneMinusT * t * control.x + t * t * p2.x
+        let y = oneMinusT * oneMinusT * p1.y + 2 * oneMinusT * t * control.y + t * t * p2.y
+        return CGPoint(x: x, y: y)
+    }
+
+    private func drawArrowHead(at tip: CGPoint, from tail: CGPoint, color: NSColor, lineWidth: CGFloat, filled: Bool, headLength: CGFloat? = nil, headAngle: CGFloat = .pi / 6, in ctx: CGContext) {
+        let angle = atan2(tip.y - tail.y, tip.x - tail.x)
+        let resolvedLength = headLength ?? max(12, lineWidth * 5)
+
+        let left = CGPoint(
+            x: tip.x - resolvedLength * cos(angle - headAngle),
+            y: tip.y - resolvedLength * sin(angle - headAngle)
+        )
+        let right = CGPoint(
+            x: tip.x - resolvedLength * cos(angle + headAngle),
+            y: tip.y - resolvedLength * sin(angle + headAngle)
+        )
+
+        if filled {
+            ctx.setFillColor(color.cgColor)
+            ctx.move(to: tip)
+            ctx.addLine(to: left)
+            ctx.addLine(to: right)
+            ctx.closePath()
+            ctx.fillPath()
+        } else {
+            ctx.setStrokeColor(color.cgColor)
+            ctx.setLineWidth(lineWidth)
+            ctx.move(to: left)
+            ctx.addLine(to: tip)
+            ctx.addLine(to: right)
+            ctx.strokePath()
+        }
     }
 
     private func drawRectangle(_ annotation: Annotation, in ctx: CGContext) {
@@ -492,6 +618,9 @@ final class AnnotationCanvasView: NSView {
                 case .bottomRight: resizeAnchorPoint = CGPoint(x: b.minX, y: b.minY)
                 case .midLeft:     resizeAnchorPoint = CGPoint(x: b.maxX, y: b.midY)
                 case .midRight:    resizeAnchorPoint = CGPoint(x: b.minX, y: b.midY)
+                case .arrowStart:  resizeAnchorPoint = annotation.points.count > 1 ? annotation.points[1] : b.origin
+                case .arrowEnd:    resizeAnchorPoint = annotation.points.count > 0 ? annotation.points[0] : b.origin
+                case .arrowMid:    break
                 case .none: break
                 }
                 return
@@ -557,7 +686,8 @@ final class AnnotationCanvasView: NSView {
         var annotation = Annotation(
             tool: annotationState.selectedTool,
             color: annotationState.selectedColor,
-            lineWidth: annotationState.lineWidth
+            lineWidth: annotationState.lineWidth,
+            arrowStyle: annotationState.arrowStyle
         )
 
         switch annotationState.selectedTool {
@@ -577,6 +707,7 @@ final class AnnotationCanvasView: NSView {
     override func mouseDragged(with event: NSEvent) {
         let viewPoint = convert(event.locationInWindow, from: nil)
         let imagePoint = viewPointToImagePoint(viewPoint)
+        let isShiftDown = event.modifierFlags.contains(.shift)
 
         // Dragging/resizing a selected annotation
         if isDraggingSelection || isResizingSelection {
@@ -600,14 +731,21 @@ final class AnnotationCanvasView: NSView {
         switch annotation.tool {
         case .arrow, .line:
             if annotation.points.count >= 2 {
-                annotation.points[1] = imagePoint
+                let endPoint = (annotation.tool == .line && isShiftDown)
+                    ? constrainedLineEnd(from: dragStartImagePoint, to: imagePoint)
+                    : imagePoint
+                annotation.points[1] = endPoint
             }
         case .rectangle, .filledRectangle, .circle:
-            let x = min(dragStartImagePoint.x, imagePoint.x)
-            let y = min(dragStartImagePoint.y, imagePoint.y)
-            let w = abs(imagePoint.x - dragStartImagePoint.x)
-            let h = abs(imagePoint.y - dragStartImagePoint.y)
-            annotation.boundingRect = CGRect(x: x, y: y, width: w, height: h)
+            let rect = isShiftDown
+                ? constrainedRect(from: dragStartImagePoint, to: imagePoint)
+                : CGRect(
+                    x: min(dragStartImagePoint.x, imagePoint.x),
+                    y: min(dragStartImagePoint.y, imagePoint.y),
+                    width: abs(imagePoint.x - dragStartImagePoint.x),
+                    height: abs(imagePoint.y - dragStartImagePoint.y)
+                )
+            annotation.boundingRect = rect
         case .pen:
             annotation.points.append(imagePoint)
         default:
@@ -640,8 +778,13 @@ final class AnnotationCanvasView: NSView {
             return
         }
 
-        annotationState.commitActiveAnnotation()
-        lastAction = .annotation
+        if let active = annotationState.activeAnnotation, shouldCommitAnnotation(active) {
+            annotationState.commitActiveAnnotation()
+            lastAction = .annotation
+        } else {
+            annotationState.activeAnnotation = nil
+            annotationState.onStateChanged?()
+        }
     }
 
     // MARK: - Crop
@@ -696,6 +839,46 @@ final class AnnotationCanvasView: NSView {
         onImageCropped?(croppedImage)
     }
 
+    private func constrainedLineEnd(from start: CGPoint, to end: CGPoint) -> CGPoint {
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let angle = atan2(dy, dx)
+        let snap = CGFloat.pi / 4
+        let snappedAngle = round(angle / snap) * snap
+        let length = hypot(dx, dy)
+        return CGPoint(
+            x: start.x + cos(snappedAngle) * length,
+            y: start.y + sin(snappedAngle) * length
+        )
+    }
+
+    private func constrainedRect(from start: CGPoint, to end: CGPoint) -> CGRect {
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let size = max(abs(dx), abs(dy))
+        let w = size * (dx >= 0 ? 1 : -1)
+        let h = size * (dy >= 0 ? 1 : -1)
+        let x = w >= 0 ? start.x : start.x + w
+        let y = h >= 0 ? start.y : start.y + h
+        return CGRect(x: x, y: y, width: abs(w), height: abs(h))
+    }
+
+    private func shouldCommitAnnotation(_ annotation: Annotation) -> Bool {
+        switch annotation.tool {
+        case .arrow, .line:
+            guard annotation.points.count >= 2 else { return false }
+            let dx = annotation.points[1].x - annotation.points[0].x
+            let dy = annotation.points[1].y - annotation.points[0].y
+            return hypot(dx, dy) >= 3
+        case .rectangle, .filledRectangle, .circle:
+            return annotation.boundingRect.width >= 2 && annotation.boundingRect.height >= 2
+        case .pen:
+            return annotation.points.count >= 2
+        default:
+            return true
+        }
+    }
+
     // MARK: - Cursor Tool Handling
 
     private func handleCursorMouseDown(viewPoint: CGPoint, imagePoint: CGPoint) {
@@ -718,6 +901,9 @@ final class AnnotationCanvasView: NSView {
                 case .bottomRight: resizeAnchorPoint = CGPoint(x: b.minX, y: b.minY)
                 case .midLeft:     resizeAnchorPoint = CGPoint(x: b.maxX, y: b.midY)
                 case .midRight:    resizeAnchorPoint = CGPoint(x: b.minX, y: b.midY)
+                case .arrowStart:  resizeAnchorPoint = annotation.points.count > 1 ? annotation.points[1] : b.origin
+                case .arrowEnd:    resizeAnchorPoint = annotation.points.count > 0 ? annotation.points[0] : b.origin
+                case .arrowMid:    break
                 case .none: break
                 }
                 return
@@ -800,6 +986,19 @@ final class AnnotationCanvasView: NSView {
                     annotationState.fontSize = newFontSize
                     annotationState.onStateChanged?()
                 }
+            } else if annotationState.annotations[idx].tool == .arrow,
+                      (resizeHandle == .arrowStart || resizeHandle == .arrowEnd || resizeHandle == .arrowMid) {
+                if annotationState.annotations[idx].points.count >= 2 {
+                    if resizeHandle == .arrowStart {
+                        annotationState.annotations[idx].points[0] = imagePoint
+                    } else if resizeHandle == .arrowEnd {
+                        annotationState.annotations[idx].points[1] = imagePoint
+                    } else {
+                        annotationState.annotations[idx].curveControlPoint = imagePoint
+                    }
+                    lastDragImagePoint = imagePoint
+                    annotationState.onStateChanged?()
+                }
             } else {
                 // Freeform resize: dragged corner moves to mouse, opposite corner stays anchored
                 let anchor = resizeAnchorPoint
@@ -837,6 +1036,26 @@ final class AnnotationCanvasView: NSView {
                 (CGPoint(x: viewRect.maxX, y: viewRect.midY), .midRight),
                 (CGPoint(x: viewRect.maxX, y: viewRect.maxY), .bottomRight)
             ]
+        } else if annotation.tool == .arrow, annotation.points.count >= 2 {
+            let start = imagePointToViewPoint(annotation.points[0])
+            let end = imagePointToViewPoint(annotation.points[1])
+            if annotation.arrowStyle == .curved || annotation.arrowStyle == .double {
+                let control = annotation.arrowStyle == .double
+                    ? (annotation.curveControlPoint ?? CGPoint(x: (annotation.points[0].x + annotation.points[1].x) / 2,
+                                                             y: (annotation.points[0].y + annotation.points[1].y) / 2))
+                    : (annotation.curveControlPoint ?? curvedControlPoint(from: annotation.points[0], to: annotation.points[1]))
+                let mid = imagePointToViewPoint(control)
+                handles = [
+                    (start, .arrowStart),
+                    (mid, .arrowMid),
+                    (end, .arrowEnd)
+                ]
+            } else {
+                handles = [
+                    (start, .arrowStart),
+                    (end, .arrowEnd)
+                ]
+            }
         } else {
             // Other: 4 corner handles
             handles = [
@@ -936,6 +1155,8 @@ final class AnnotationCanvasView: NSView {
                     NSCursor.crosshair.set()
                 case .midLeft, .midRight:
                     NSCursor.resizeLeftRight.set()
+                case .arrowStart, .arrowEnd, .arrowMid:
+                    NSCursor.crosshair.set()
                 case .none:
                     break
                 }
@@ -972,6 +1193,25 @@ final class AnnotationCanvasView: NSView {
             }
         }
         return false
+    }
+
+    private func hitTestArrowMidHandle(viewPoint: CGPoint, annotation: Annotation) -> Bool {
+        guard annotation.tool == .arrow,
+              (annotation.arrowStyle == .curved || annotation.arrowStyle == .double),
+              annotation.points.count >= 2 else { return false }
+        let control = annotation.arrowStyle == .double
+            ? (annotation.curveControlPoint ?? CGPoint(x: (annotation.points[0].x + annotation.points[1].x) / 2,
+                                                     y: (annotation.points[0].y + annotation.points[1].y) / 2))
+            : (annotation.curveControlPoint ?? curvedControlPoint(from: annotation.points[0], to: annotation.points[1]))
+        let midView = imagePointToViewPoint(control)
+        let handleSize: CGFloat = 18
+        let handleRect = CGRect(
+            x: midView.x - handleSize / 2,
+            y: midView.y - handleSize / 2,
+            width: handleSize,
+            height: handleSize
+        )
+        return handleRect.contains(viewPoint)
     }
 
     override func resetCursorRects() {

@@ -233,6 +233,8 @@ private struct AnnotationRecord: Codable {
     let tool: String
     let color: ColorRecord
     let lineWidth: CGFloat
+    let arrowStyle: String?
+    let curveControlPoint: PointRecord?
     let points: [PointRecord]
     let boundingRect: RectRecord
     let text: String
@@ -246,6 +248,8 @@ private struct AnnotationRecord: Codable {
         tool = annotation.tool.rawValue
         color = ColorRecord(from: annotation.color)
         lineWidth = annotation.lineWidth
+        arrowStyle = annotation.arrowStyle.rawValue
+        curveControlPoint = annotation.curveControlPoint.map(PointRecord.init)
         points = annotation.points.map(PointRecord.init)
         boundingRect = RectRecord(from: annotation.boundingRect)
         text = annotation.text
@@ -261,6 +265,8 @@ private struct AnnotationRecord: Codable {
             tool: AnnotationTool(rawValue: tool) ?? .arrow,
             color: color.toColor(),
             lineWidth: lineWidth,
+            arrowStyle: ArrowAnnotationStyle(rawValue: arrowStyle ?? "") ?? .standard,
+            curveControlPoint: curveControlPoint?.toPoint(),
             points: points.map { $0.toPoint() },
             boundingRect: boundingRect.toRect(),
             text: text,
@@ -448,6 +454,22 @@ struct ImageViewerView: View {
                 commitTextAnnotation()
             }
         }
+        .onChange(of: annotationState.selectedAnnotationID) { _ in
+            guard let selectedID = annotationState.selectedAnnotationID,
+                  let idx = annotationState.annotations.firstIndex(where: { $0.id == selectedID }) else { return }
+            let selected = annotationState.annotations[idx]
+            switch selected.tool {
+            case .arrow:
+                annotationState.selectedTool = .arrow
+                annotationState.lineWidth = selected.lineWidth
+                annotationState.arrowStyle = selected.arrowStyle
+            case .line, .rectangle, .filledRectangle, .circle:
+                annotationState.selectedTool = selected.tool
+                annotationState.lineWidth = selected.lineWidth
+            default:
+                break
+            }
+        }
         .onChange(of: textEditFontSize) { newValue in
             guard isEditingText else { return }
             let imageFontSize = imageToViewScale > 0 ? newValue / imageToViewScale : newValue
@@ -467,6 +489,22 @@ struct ImageViewerView: View {
                       let idx = annotationState.annotations.firstIndex(where: { $0.id == selectedID }),
                       annotationState.annotations[idx].tool == .text {
                 annotationState.annotations[idx].textStyle = newValue
+                annotationState.onStateChanged?()
+            }
+        }
+        .onChange(of: annotationState.arrowStyle) { newValue in
+            guard let selectedID = annotationState.selectedAnnotationID,
+                  let idx = annotationState.annotations.firstIndex(where: { $0.id == selectedID }),
+                  annotationState.annotations[idx].tool == .arrow else { return }
+            annotationState.annotations[idx].arrowStyle = newValue
+            annotationState.onStateChanged?()
+        }
+        .onChange(of: annotationState.lineWidth) { newValue in
+            guard let selectedID = annotationState.selectedAnnotationID,
+                  let idx = annotationState.annotations.firstIndex(where: { $0.id == selectedID }) else { return }
+            let tool = annotationState.annotations[idx].tool
+            if tool == .arrow || tool == .line || tool == .rectangle || tool == .filledRectangle || tool == .circle {
+                annotationState.annotations[idx].lineWidth = newValue
                 annotationState.onStateChanged?()
             }
         }

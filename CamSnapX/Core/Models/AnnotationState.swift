@@ -16,6 +16,7 @@ final class AnnotationState: ObservableObject {
     }
     @Published var selectedColor: NSColor = .systemRed
     @Published var lineWidth: CGFloat = 3.0
+    @Published var arrowStyle: ArrowAnnotationStyle = .standard
     @Published var fontSize: CGFloat = 20.0
     @Published var textStyle: TextAnnotationStyle = .standard
     @Published var annotations: [Annotation] = []

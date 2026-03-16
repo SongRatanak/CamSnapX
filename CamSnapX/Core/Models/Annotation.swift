@@ -28,6 +28,14 @@ enum AnnotationTool: String, CaseIterable {
     }
 }
 
+/// Arrow style options for arrow annotations
+enum ArrowAnnotationStyle: String, CaseIterable {
+    case standard = "Standard"
+    case fancy = "Fancy"
+    case curved = "Curved"
+    case double = "Double"
+}
+
 /// Text style options for text annotations
 enum TextAnnotationStyle: String, CaseIterable {
     case standard     = "Standard"
@@ -101,6 +109,8 @@ struct Annotation: Identifiable {
     var tool: AnnotationTool
     var color: NSColor
     var lineWidth: CGFloat
+    var arrowStyle: ArrowAnnotationStyle
+    var curveControlPoint: CGPoint?
     var points: [CGPoint]       // For line, arrow (2 points), pen (many points)
     var boundingRect: CGRect    // For rectangle, circle; origin for text
     var text: String            // For text annotations
@@ -114,6 +124,8 @@ struct Annotation: Identifiable {
         tool: AnnotationTool,
         color: NSColor = .systemRed,
         lineWidth: CGFloat = 3.0,
+        arrowStyle: ArrowAnnotationStyle = .standard,
+        curveControlPoint: CGPoint? = nil,
         points: [CGPoint] = [],
         boundingRect: CGRect = .zero,
         text: String = "",
@@ -125,6 +137,8 @@ struct Annotation: Identifiable {
         self.tool = tool
         self.color = color
         self.lineWidth = lineWidth
+        self.arrowStyle = arrowStyle
+        self.curveControlPoint = curveControlPoint
         self.points = points
         self.boundingRect = boundingRect
         self.text = text
@@ -188,6 +202,9 @@ struct Annotation: Identifiable {
                 points[i].x += dx
                 points[i].y += dy
             }
+            if let control = curveControlPoint {
+                curveControlPoint = CGPoint(x: control.x + dx, y: control.y + dy)
+            }
         case .pen:
             for i in points.indices {
                 points[i].x += dx
@@ -221,6 +238,12 @@ struct Annotation: Identifiable {
                 points[i].x = center.x + (points[i].x - center.x) * factor
                 points[i].y = center.y + (points[i].y - center.y) * factor
             }
+            if let control = curveControlPoint {
+                curveControlPoint = CGPoint(
+                    x: center.x + (control.x - center.x) * factor,
+                    y: center.y + (control.y - center.y) * factor
+                )
+            }
         case .pen:
             for i in points.indices {
                 points[i].x = center.x + (points[i].x - center.x) * factor
@@ -251,6 +274,14 @@ struct Annotation: Identifiable {
                 let relY = (points[i].y - oldBounds.minY) / oldBounds.height
                 points[i].x = newRect.minX + relX * newRect.width
                 points[i].y = newRect.minY + relY * newRect.height
+            }
+            if let control = curveControlPoint {
+                let relX = (control.x - oldBounds.minX) / oldBounds.width
+                let relY = (control.y - oldBounds.minY) / oldBounds.height
+                curveControlPoint = CGPoint(
+                    x: newRect.minX + relX * newRect.width,
+                    y: newRect.minY + relY * newRect.height
+                )
             }
         case .pen:
             for i in points.indices {
