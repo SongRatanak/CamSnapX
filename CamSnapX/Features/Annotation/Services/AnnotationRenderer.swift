@@ -58,6 +58,7 @@ final class AnnotationRenderer {
         switch annotation.tool {
         case .arrow:     drawArrow(annotation, in: ctx)
         case .rectangle: drawRectangle(annotation, in: ctx)
+        case .filledRectangle: drawFilledRectangle(annotation, in: ctx)
         case .circle:    drawCircle(annotation, in: ctx)
         case .line:      drawLine(annotation, in: ctx)
         case .pen:       drawFreehand(annotation, in: ctx)
@@ -105,6 +106,11 @@ final class AnnotationRenderer {
         ctx.setStrokeColor(annotation.color.cgColor)
         ctx.setLineWidth(annotation.lineWidth)
         ctx.stroke(annotation.boundingRect)
+    }
+
+    private static func drawFilledRectangle(_ annotation: Annotation, in ctx: CGContext) {
+        ctx.setFillColor(annotation.color.cgColor)
+        ctx.fill(annotation.boundingRect)
     }
 
     private static func drawCircle(_ annotation: Annotation, in ctx: CGContext) {

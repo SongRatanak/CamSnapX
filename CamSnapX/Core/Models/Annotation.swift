@@ -12,7 +12,7 @@ enum AnnotationTool: String, CaseIterable {
     // Group 1: File operations (placeholder)
     case crop, copyArea, addImage
     // Group 2: Drawing tools (functional)
-    case cursor, rectangle, circle, line, arrow, text
+    case cursor, rectangle, filledRectangle, circle, line, arrow, text
     // Group 3: Effects (placeholder)
     case blur, highlight
     // Group 4: Advanced
@@ -20,7 +20,7 @@ enum AnnotationTool: String, CaseIterable {
 
     var isDrawingTool: Bool {
         switch self {
-        case .crop, .rectangle, .circle, .line, .arrow, .text, .pen:
+        case .crop, .rectangle, .filledRectangle, .circle, .line, .arrow, .text, .pen:
             return true
         default:
             return false
@@ -110,6 +110,7 @@ struct Annotation: Identifiable {
     var isComplete: Bool
 
     init(
+        id: UUID = UUID(),
         tool: AnnotationTool,
         color: NSColor = .systemRed,
         lineWidth: CGFloat = 3.0,
@@ -120,7 +121,7 @@ struct Annotation: Identifiable {
         textStyle: TextAnnotationStyle = .standard,
         textBoxWidth: CGFloat? = nil
     ) {
-        self.id = UUID()
+        self.id = id
         self.tool = tool
         self.color = color
         self.lineWidth = lineWidth
@@ -137,7 +138,7 @@ struct Annotation: Identifiable {
     var hitBounds: CGRect {
         let margin: CGFloat = 6
         switch tool {
-        case .rectangle, .circle:
+        case .rectangle, .filledRectangle, .circle:
             return boundingRect.insetBy(dx: -margin, dy: -margin)
         case .arrow, .line:
             guard points.count >= 2 else { return .zero }
@@ -179,7 +180,7 @@ struct Annotation: Identifiable {
     /// Move the annotation by a delta in image space
     mutating func translate(dx: CGFloat, dy: CGFloat) {
         switch tool {
-        case .rectangle, .circle:
+        case .rectangle, .filledRectangle, .circle:
             boundingRect.origin.x += dx
             boundingRect.origin.y += dy
         case .arrow, .line:
@@ -206,7 +207,7 @@ struct Annotation: Identifiable {
             CGAffineTransform(translationX: hitBounds.width / 2, y: hitBounds.height / 2)
         )
         switch tool {
-        case .rectangle, .circle:
+        case .rectangle, .filledRectangle, .circle:
             let newW = boundingRect.width * factor
             let newH = boundingRect.height * factor
             boundingRect = CGRect(
@@ -242,7 +243,7 @@ struct Annotation: Identifiable {
         let scaleY = newRect.height / oldBounds.height
 
         switch tool {
-        case .rectangle, .circle:
+        case .rectangle, .filledRectangle, .circle:
             boundingRect = newRect
         case .arrow, .line:
             for i in points.indices {

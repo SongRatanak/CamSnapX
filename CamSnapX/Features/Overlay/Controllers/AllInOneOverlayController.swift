@@ -700,6 +700,16 @@ extension AllInOneOverlayController {
         captureScrollingFrame()
     }
 
+    func didDetectScrollTooFast() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.scrollingControlModel.scrollTooFast = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                self?.scrollingControlModel.scrollTooFast = false
+            }
+        }
+    }
+
     func didUpdateStitchedPreview(_ image: CGImage, totalHeight: Int) {
         // Live preview only while active scrolling capture (not in pre-capture shelf).
         let maxPreviewHeight = 300
@@ -722,6 +732,7 @@ extension AllInOneOverlayController {
         DispatchQueue.main.async { [weak self] in
             self?.scrollingControlModel.previewImage = nsImage
             self?.scrollingControlModel.capturedHeight = totalHeight
+            self?.scrollingControlModel.scrollTooFast = false
         }
     }
 }

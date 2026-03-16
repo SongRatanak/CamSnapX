@@ -12,6 +12,7 @@ import SwiftUI
 final class ScrollingCaptureControlModel: ObservableObject {
     @Published var previewImage: NSImage?
     @Published var capturedHeight: Int = 0
+    @Published var scrollTooFast: Bool = false
 }
 
 struct ScrollingCaptureControlView: View {
@@ -61,9 +62,21 @@ struct ScrollingCaptureControlView: View {
                     .foregroundStyle(.white.opacity(0.5))
             }
 
-            Text("Scroll slowly for best results")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.white.opacity(0.5))
+            if model.scrollTooFast {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
+                    Text("Slow down — scrolling too fast")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .foregroundStyle(.orange)
+                .transition(.opacity)
+            } else {
+                Text("Scroll slowly for best results")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .transition(.opacity)
+            }
 
             HStack(spacing: 8) {
                 Button("Cancel") {

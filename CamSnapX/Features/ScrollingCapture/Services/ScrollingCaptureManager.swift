@@ -20,6 +20,7 @@ protocol ScrollingCaptureDelegate: AnyObject {
     func setPanelsIgnoreMouseEvents(_ ignore: Bool)
     func captureScrollFrame()
     func didUpdateStitchedPreview(_ image: CGImage, totalHeight: Int)
+    func didDetectScrollTooFast()
 }
 
 final class ScrollingCaptureManager {
@@ -103,6 +104,7 @@ final class ScrollingCaptureManager {
         guard let shift = detectShiftVision(previous: previous, next: scaled)
             ?? detectShiftBand(previous: previous, next: scaled)
             ?? detectShiftByRowSignature(previous: previous, next: scaled) else {
+            delegate?.didDetectScrollTooFast()
             return
         }
 

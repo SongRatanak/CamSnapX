@@ -53,6 +53,8 @@ final class CaptureAreaController: NSObject {
 
     func showPreview(for fileURL: URL) {
         guard let image = NSImage(contentsOf: fileURL) else { return }
+        // History restore should show on the user's current screen to avoid follow-timer jumps.
+        lastUserScreen = screenForPoint(NSEvent.mouseLocation)
         showPreview(with: image, fileURL: fileURL, on: lastUserScreen ?? currentUserScreen())
     }
 
@@ -483,18 +485,10 @@ final class CaptureAreaController: NSObject {
                 height: previewSize.height
             )
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.08
-                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                context.duration = 0.16
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 context.allowsImplicitAnimation = true
-                panel.animator().alphaValue = 0
-            } completionHandler: {
-                panel.setFrame(targetFrame, display: true)
-                NSAnimationContext.runAnimationGroup { context in
-                    context.duration = 0.12
-                    context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                    context.allowsImplicitAnimation = true
-                    panel.animator().alphaValue = 1
-                }
+                panel.animator().setFrame(targetFrame, display: true)
             }
         }
     }

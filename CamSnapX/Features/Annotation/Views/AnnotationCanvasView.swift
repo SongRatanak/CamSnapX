@@ -36,6 +36,22 @@ final class AnnotationCanvasView: NSView {
     // Crop state
     private var cropRect: CGRect?  // In image space, while dragging
 
+    // Undo state
+    private struct CanvasSnapshot {
+        let image: NSImage
+        let annotations: [Annotation]
+        let selectedAnnotationID: UUID?
+    }
+
+    private enum LastAction {
+        case none
+        case annotation
+        case crop
+    }
+
+    private var cropUndoStack: [CanvasSnapshot] = []
+    private var lastAction: LastAction = .none
+
     // Text editing — passes (imagePoint, viewPoint, imageToViewScale) for new text
     var onRequestTextEditor: ((CGPoint, CGPoint, CGFloat) -> Void)?
 
@@ -274,6 +290,7 @@ final class AnnotationCanvasView: NSView {
         switch annotation.tool {
         case .arrow:     drawArrow(annotation, in: ctx)
         case .rectangle: drawRectangle(annotation, in: ctx)
+        case .filledRectangle: drawFilledRectangle(annotation, in: ctx)
         case .circle:    drawCircle(annotation, in: ctx)
         case .line:      drawLine(annotation, in: ctx)
         case .pen:       drawFreehand(annotation, in: ctx)
@@ -327,6 +344,13 @@ final class AnnotationCanvasView: NSView {
         ctx.setStrokeColor(annotation.color.cgColor)
         ctx.setLineWidth(lw)
         ctx.stroke(viewRect)
+    }
+
+    private func drawFilledRectangle(_ annotation: Annotation, in ctx: CGContext) {
+        let viewRect = imageRectToViewRect(annotation.boundingRect)
+
+        ctx.setFillColor(annotation.color.cgColor)
+        ctx.fill(viewRect)
     }
 
     private func drawCircle(_ annotation: Annotation, in ctx: CGContext) {
@@ -539,7 +563,7 @@ final class AnnotationCanvasView: NSView {
         switch annotationState.selectedTool {
         case .arrow, .line:
             annotation.points = [imagePoint, imagePoint]
-        case .rectangle, .circle:
+        case .rectangle, .filledRectangle, .circle:
             annotation.boundingRect = CGRect(origin: imagePoint, size: .zero)
         case .pen:
             annotation.points = [imagePoint]
@@ -578,7 +602,7 @@ final class AnnotationCanvasView: NSView {
             if annotation.points.count >= 2 {
                 annotation.points[1] = imagePoint
             }
-        case .rectangle, .circle:
+        case .rectangle, .filledRectangle, .circle:
             let x = min(dragStartImagePoint.x, imagePoint.x)
             let y = min(dragStartImagePoint.y, imagePoint.y)
             let w = abs(imagePoint.x - dragStartImagePoint.x)
@@ -617,12 +641,22 @@ final class AnnotationCanvasView: NSView {
         }
 
         annotationState.commitActiveAnnotation()
+        lastAction = .annotation
     }
 
     // MARK: - Crop
 
     private func applyCrop(_ cropImageRect: CGRect) {
         guard cropImageRect.width > 2, cropImageRect.height > 2 else { return }
+
+        // Snapshot before crop for undo
+        let snapshot = CanvasSnapshot(
+            image: image,
+            annotations: annotationState.annotations,
+            selectedAnnotationID: annotationState.selectedAnnotationID
+        )
+        cropUndoStack.append(snapshot)
+        lastAction = .crop
 
         // First render annotations onto current image
         let annotatedImage = AnnotationRenderer.render(annotations: annotationState.annotations, onto: image)
@@ -831,7 +865,7 @@ final class AnnotationCanvasView: NSView {
 
     override func keyDown(with event: NSEvent) {
         if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "z" {
-            annotationState.undoLast()
+            handleUndo()
         } else if event.keyCode == 51 || event.keyCode == 117 { // Delete or Forward Delete
             deleteSelectedAnnotation()
         } else {
@@ -844,6 +878,25 @@ final class AnnotationCanvasView: NSView {
         annotationState.annotations.removeAll { $0.id == selectedID }
         annotationState.selectedAnnotationID = nil
         annotationState.onStateChanged?()
+    }
+
+    private func handleUndo() {
+        if lastAction == .crop, let snapshot = cropUndoStack.popLast() {
+            image = snapshot.image
+            annotationState.annotations = snapshot.annotations
+            annotationState.activeAnnotation = nil
+            annotationState.selectedAnnotationID = snapshot.selectedAnnotationID
+            cropRect = nil
+            computeImageRect()
+            needsDisplay = true
+            annotationState.onStateChanged?()
+            onImageCropped?(snapshot.image)
+            lastAction = cropUndoStack.isEmpty ? .none : .crop
+            return
+        }
+
+        annotationState.undoLast()
+        lastAction = .annotation
     }
 
     // MARK: - Mouse Tracking & Cursor

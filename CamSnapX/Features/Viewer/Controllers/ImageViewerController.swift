@@ -6,12 +6,21 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
+final class ImageState: ObservableObject {
+    @Published var image: NSImage
+
+    init(image: NSImage) {
+        self.image = image
+    }
+}
+
 final class ImageViewerController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
-    private let image: NSImage
+    private let imageState: ImageState
     private let fileURL: URL?
     private let annotationState = AnnotationState()
     var onImageUpdated: ((NSImage) -> Void)?
@@ -20,11 +29,12 @@ final class ImageViewerController: NSObject, NSWindowDelegate {
     private var isClosingWithConfirmation = false
 
     init(image: NSImage, fileURL: URL?) {
-        self.image = image
+        self.imageState = ImageState(image: image)
         self.fileURL = fileURL
         super.init()
     }
 
+    @MainActor
     func show() {
         if let window {
             window.makeKeyAndOrderFront(nil)
@@ -32,7 +42,9 @@ final class ImageViewerController: NSObject, NSWindowDelegate {
             return
         }
 
-        let imageSize = image.size
+        loadAnnotationSnapshotIfNeeded()
+
+        let imageSize = imageState.image.size
         let screen = NSScreen.main ?? NSScreen.screens[0]
         let maxWidth = screen.visibleFrame.width * 0.8
         let maxHeight = screen.visibleFrame.height * 0.8
@@ -49,7 +61,7 @@ final class ImageViewerController: NSObject, NSWindowDelegate {
         windowHeight = max(windowHeight, 400)
 
         let contentView = ImageViewerView(
-            image: image,
+            imageState: imageState,
             fileURL: fileURL,
             annotationState: annotationState,
             onDone: { [weak self] in self?.close() },
@@ -83,20 +95,24 @@ final class ImageViewerController: NSObject, NSWindowDelegate {
     }
 
     func close() {
-        if !annotationState.annotations.isEmpty {
-            let rendered = AnnotationRenderer.render(
-                annotations: annotationState.annotations,
-                onto: image
-            )
-            if let fileURL {
-                overwriteImage(rendered, at: fileURL)
-                CaptureHistoryStore.shared.refresh(fileURL)
-            }
+        commitPendingEdits?()
+
+        let baseImage = imageState.image
+        let rendered = AnnotationRenderer.render(
+            annotations: annotationState.annotations,
+            onto: baseImage
+        )
+
+        if let fileURL {
+            overwriteImage(rendered, at: fileURL)
+            CaptureHistoryStore.shared.refresh(fileURL)
+            saveAnnotationSnapshot(baseImage: baseImage, annotations: annotationState.annotations, to: fileURL)
+        }
+
         onImageUpdated?(rendered)
+        hasUnsavedChanges = false
+        window?.close()
     }
-    hasUnsavedChanges = false
-    window?.close()
-}
 
     // MARK: - NSWindowDelegate
 
@@ -145,6 +161,8 @@ final class ImageViewerController: NSObject, NSWindowDelegate {
         panel.beginSheetModal(for: parentWindow) { response in
             guard response == .OK, let url = panel.url else { return }
             self.writePNG(annotatedImage, to: url)
+            let baseImage = self.imageState.image
+            self.saveAnnotationSnapshot(baseImage: baseImage, annotations: self.annotationState.annotations, to: url)
         }
     }
 
@@ -159,14 +177,157 @@ final class ImageViewerController: NSObject, NSWindowDelegate {
         try? pngData.write(to: url, options: .atomic)
     }
 
+    @MainActor
+    private func loadAnnotationSnapshotIfNeeded() {
+        guard let fileURL else { return }
+        let sidecarURL = annotationSidecarURL(for: fileURL)
+        guard let data = try? Data(contentsOf: sidecarURL) else { return }
+        let decoder = JSONDecoder()
+        guard let snapshot = try? decoder.decode(AnnotationSnapshot.self, from: data) else { return }
+        guard let baseImage = NSImage(data: snapshot.baseImagePNG) else { return }
+
+        imageState.image = baseImage
+        annotationState.annotations = snapshot.annotations.map { $0.toAnnotation() }
+    }
+
+    private func saveAnnotationSnapshot(baseImage: NSImage, annotations: [Annotation], to fileURL: URL) {
+        let sidecarURL = annotationSidecarURL(for: fileURL)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let snapshot = AnnotationSnapshot(baseImage: baseImage, annotations: annotations)
+        guard let data = try? encoder.encode(snapshot) else { return }
+        try? data.write(to: sidecarURL, options: .atomic)
+    }
+
+    private func annotationSidecarURL(for fileURL: URL) -> URL {
+        fileURL.appendingPathExtension("annotations.json")
+    }
+
     // Keep active viewers alive
     static var activeViewers: [ImageViewerController] = []
+}
+
+// MARK: - Persistence Models
+
+private struct AnnotationSnapshot: Codable {
+    let baseImagePNG: Data
+    let annotations: [AnnotationRecord]
+
+    init(baseImage: NSImage, annotations: [Annotation]) {
+        self.baseImagePNG = AnnotationSnapshot.pngData(from: baseImage)
+        self.annotations = annotations.map { AnnotationRecord(from: $0) }
+    }
+
+    private static func pngData(from image: NSImage) -> Data {
+        guard let tiffData = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData),
+              let pngData = bitmap.representation(using: .png, properties: [:]) else {
+            return Data()
+        }
+        return pngData
+    }
+}
+
+private struct AnnotationRecord: Codable {
+    let id: UUID
+    let tool: String
+    let color: ColorRecord
+    let lineWidth: CGFloat
+    let points: [PointRecord]
+    let boundingRect: RectRecord
+    let text: String
+    let fontSize: CGFloat
+    let textStyle: String
+    let textBoxWidth: CGFloat?
+    let isComplete: Bool
+
+    init(from annotation: Annotation) {
+        id = annotation.id
+        tool = annotation.tool.rawValue
+        color = ColorRecord(from: annotation.color)
+        lineWidth = annotation.lineWidth
+        points = annotation.points.map(PointRecord.init)
+        boundingRect = RectRecord(from: annotation.boundingRect)
+        text = annotation.text
+        fontSize = annotation.fontSize
+        textStyle = annotation.textStyle.rawValue
+        textBoxWidth = annotation.textBoxWidth
+        isComplete = annotation.isComplete
+    }
+
+    func toAnnotation() -> Annotation {
+        var annotation = Annotation(
+            id: id,
+            tool: AnnotationTool(rawValue: tool) ?? .arrow,
+            color: color.toColor(),
+            lineWidth: lineWidth,
+            points: points.map { $0.toPoint() },
+            boundingRect: boundingRect.toRect(),
+            text: text,
+            fontSize: fontSize,
+            textStyle: TextAnnotationStyle(rawValue: textStyle) ?? .standard,
+            textBoxWidth: textBoxWidth
+        )
+        annotation.isComplete = isComplete
+        return annotation
+    }
+}
+
+private struct PointRecord: Codable {
+    let x: CGFloat
+    let y: CGFloat
+
+    init(_ point: CGPoint) {
+        x = point.x
+        y = point.y
+    }
+
+    func toPoint() -> CGPoint {
+        CGPoint(x: x, y: y)
+    }
+}
+
+private struct RectRecord: Codable {
+    let x: CGFloat
+    let y: CGFloat
+    let width: CGFloat
+    let height: CGFloat
+
+    init(from rect: CGRect) {
+        x = rect.origin.x
+        y = rect.origin.y
+        width = rect.size.width
+        height = rect.size.height
+    }
+
+    func toRect() -> CGRect {
+        CGRect(x: x, y: y, width: width, height: height)
+    }
+}
+
+private struct ColorRecord: Codable {
+    let r: CGFloat
+    let g: CGFloat
+    let b: CGFloat
+    let a: CGFloat
+
+    init(from color: NSColor) {
+        let converted = color.usingColorSpace(.sRGB) ?? color
+        r = converted.redComponent
+        g = converted.greenComponent
+        b = converted.blueComponent
+        a = converted.alphaComponent
+    }
+
+    func toColor() -> NSColor {
+        NSColor(srgbRed: r, green: g, blue: b, alpha: a)
+    }
 }
 
 // MARK: - SwiftUI View
 
 struct ImageViewerView: View {
-    @State var image: NSImage
+    @ObservedObject var imageState: ImageState
     let fileURL: URL?
     @ObservedObject var annotationState: AnnotationState
     let onDone: () -> Void
@@ -194,7 +355,7 @@ struct ImageViewerView: View {
                 onSaveAs: {
                     let rendered = AnnotationRenderer.render(
                         annotations: annotationState.annotations,
-                        onto: image
+                        onto: imageState.image
                     )
                     onSaveAs(rendered)
                 },
@@ -204,79 +365,82 @@ struct ImageViewerView: View {
             Divider()
 
             // Canvas with image + annotations
-            ZStack(alignment: .topLeading) {
-                AnnotationCanvasRepresentable(
-                    image: $image,
-                    state: annotationState,
-                    onRequestTextEditor: { imagePoint, viewPoint, scale in
-                        editingAnnotationID = nil
-                        textEditImagePoint = imagePoint
-                        textEditPosition = viewPoint
-                        textEditInitialViewPosition = viewPoint
-                        textEditContent = ""
-                        textEditColor = nil
-                        textEditStyle = annotationState.textStyle
-                        imageToViewScale = scale
-                        textEditFontSize = annotationState.fontSize * scale
-                        textEditBoxWidth = nil
-                        isEditingText = true
-                    },
-                    onRequestEditTextAnnotation: { annotationID, currentText, viewPoint, scale in
-                        editingAnnotationID = annotationID
-                        textEditPosition = viewPoint
-                        textEditInitialViewPosition = viewPoint
-                        textEditContent = currentText
-                        imageToViewScale = scale
-                        if let ann = annotationState.annotations.first(where: { $0.id == annotationID }) {
-                            textEditImagePoint = ann.boundingRect.origin
-                            textEditFontSize = ann.fontSize * scale
-                            textEditColor = ann.color
-                            textEditStyle = ann.textStyle
-                            if let w = ann.textBoxWidth {
-                                textEditBoxWidth = w * scale
-                            } else {
-                                textEditBoxWidth = nil
-                            }
-                            annotationState.fontSize = ann.fontSize
-                        }
-                        isEditingText = true
-                    },
-                    editingAnnotationID: editingAnnotationID
-                )
-
-                // Click-outside overlay to commit text
-                if isEditingText {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            commitTextAnnotation()
-                        }
-                        .allowsHitTesting(true)
-                }
-
-                // Text editing overlay — uses .position() internally
-                if isEditingText {
-                    AnnotationTextEditor(
-                        text: $textEditContent,
-                        nsColor: textEditColor ?? annotationState.selectedColor,
-                        onCommit: {
-                            commitTextAnnotation()
-                        },
-                        onCancel: {
-                            isEditingText = false
+            ScrollView([.vertical, .horizontal]) {
+                ZStack(alignment: .topLeading) {
+                    AnnotationCanvasRepresentable(
+                        image: $imageState.image,
+                        state: annotationState,
+                        onRequestTextEditor: { imagePoint, viewPoint, scale in
+                            editingAnnotationID = nil
+                            textEditImagePoint = imagePoint
+                            textEditPosition = viewPoint
+                            textEditInitialViewPosition = viewPoint
                             textEditContent = ""
                             textEditColor = nil
+                            textEditStyle = annotationState.textStyle
+                            imageToViewScale = scale
+                            textEditFontSize = annotationState.fontSize * scale
                             textEditBoxWidth = nil
-                            editingAnnotationID = nil
+                            isEditingText = true
                         },
-                        position: $textEditPosition,
-                        fontSize: $textEditFontSize,
-                        textStyle: textEditStyle,
-                        boxWidth: $textEditBoxWidth,
-                        imageToViewScale: imageToViewScale
+                        onRequestEditTextAnnotation: { annotationID, currentText, viewPoint, scale in
+                            editingAnnotationID = annotationID
+                            textEditPosition = viewPoint
+                            textEditInitialViewPosition = viewPoint
+                            textEditContent = currentText
+                            imageToViewScale = scale
+                            if let ann = annotationState.annotations.first(where: { $0.id == annotationID }) {
+                                textEditImagePoint = ann.boundingRect.origin
+                                textEditFontSize = ann.fontSize * scale
+                                textEditColor = ann.color
+                                textEditStyle = ann.textStyle
+                                if let w = ann.textBoxWidth {
+                                    textEditBoxWidth = w * scale
+                                } else {
+                                    textEditBoxWidth = nil
+                                }
+                                annotationState.fontSize = ann.fontSize
+                            }
+                            isEditingText = true
+                        },
+                        editingAnnotationID: editingAnnotationID
                     )
-                    .allowsHitTesting(true)
+
+                    // Click-outside overlay to commit text
+                    if isEditingText {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                commitTextAnnotation()
+                            }
+                            .allowsHitTesting(true)
+                    }
+
+                    // Text editing overlay — uses .position() internally
+                    if isEditingText {
+                        AnnotationTextEditor(
+                            text: $textEditContent,
+                            nsColor: textEditColor ?? annotationState.selectedColor,
+                            onCommit: {
+                                commitTextAnnotation()
+                            },
+                            onCancel: {
+                                isEditingText = false
+                                textEditContent = ""
+                                textEditColor = nil
+                                textEditBoxWidth = nil
+                                editingAnnotationID = nil
+                            },
+                            position: $textEditPosition,
+                            fontSize: $textEditFontSize,
+                            textStyle: textEditStyle,
+                            boxWidth: $textEditBoxWidth,
+                            imageToViewScale: imageToViewScale
+                        )
+                        .allowsHitTesting(true)
+                    }
                 }
+                .frame(width: imageState.image.size.width, height: imageState.image.size.height)
             }
         }
         .onChange(of: annotationState.selectedTool) {

@@ -208,6 +208,9 @@ private struct HistoryCard: View {
                 .foregroundStyle(.white.opacity(0.7))
         }
         .onAppear { loadThumbnail() }
+        .onTapGesture(count: 2) {
+            openEditor()
+        }
     }
 
     private func loadThumbnail() {
@@ -236,6 +239,22 @@ private struct HistoryCard: View {
                 thumbnail = nsImage
             }
         }
+    }
+
+    private func openEditor() {
+        let url = item.fileURL
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            fileMissing = true
+            return
+        }
+        guard let image = NSImage(contentsOf: url) else {
+            fileMissing = true
+            return
+        }
+        let viewer = ImageViewerController(image: image, fileURL: url)
+        ImageViewerController.activeViewers.append(viewer)
+        CaptureHistoryPanelController.shared.hide()
+        viewer.show()
     }
 
     private func relativeDateString(from date: Date) -> String {

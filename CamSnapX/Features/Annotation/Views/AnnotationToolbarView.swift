@@ -32,6 +32,7 @@ struct AnnotationToolbarView: View {
                     toolGroup {
                         toolButton("cursorarrow", tool: .cursor)
                         toolButton("rectangle", tool: .rectangle)
+                        toolButton("rectangle.fill", tool: .filledRectangle)
                         toolButton("circle", tool: .circle)
                         toolButton("line.diagonal", tool: .line)
                         toolButton("arrow.up.right", tool: .arrow)
@@ -284,6 +285,7 @@ struct AnnotationToolbarView: View {
         case .addImage: return "Add Image"
         case .cursor: return "Cursor"
         case .rectangle: return "Rectangle"
+        case .filledRectangle: return "Filled Rectangle"
         case .circle: return "Circle"
         case .line: return "Line"
         case .arrow: return "Arrow"

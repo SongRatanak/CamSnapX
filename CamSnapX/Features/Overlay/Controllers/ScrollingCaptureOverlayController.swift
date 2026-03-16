@@ -374,6 +374,17 @@ final class ScrollingCaptureOverlayController: NSObject, ScrollingCaptureDelegat
         captureScrollingFrame()
     }
 
+    func didDetectScrollTooFast() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.scrollingControlModel.scrollTooFast = true
+            // Auto-dismiss the warning after 2 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                self?.scrollingControlModel.scrollTooFast = false
+            }
+        }
+    }
+
     func didUpdateStitchedPreview(_ image: CGImage, totalHeight: Int) {
         let maxPreviewHeight = 300
         let scale = min(1.0, CGFloat(maxPreviewHeight) / CGFloat(image.height))
@@ -395,6 +406,7 @@ final class ScrollingCaptureOverlayController: NSObject, ScrollingCaptureDelegat
         DispatchQueue.main.async { [weak self] in
             self?.scrollingControlModel.previewImage = nsImage
             self?.scrollingControlModel.capturedHeight = totalHeight
+            self?.scrollingControlModel.scrollTooFast = false
         }
     }
 
