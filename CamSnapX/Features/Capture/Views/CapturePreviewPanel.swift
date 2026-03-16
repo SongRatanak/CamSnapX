@@ -16,6 +16,24 @@ final class PreviewPanel: NSPanel {
     func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
+private struct VisualEffectBlur: NSViewRepresentable {
+    var material: NSVisualEffectView.Material
+    var blendingMode: NSVisualEffectView.BlendingMode
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = blendingMode
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.blendingMode = blendingMode
+    }
+}
+
 struct CapturePreviewView: View {
     @State var image: NSImage
     let fileURL: URL?
@@ -42,8 +60,13 @@ struct CapturePreviewView: View {
                 }
 
             if isHovering {
+                VisualEffectBlur(material: .hudWindow, blendingMode: .withinWindow)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .frame(width: 160, height: 120)
+                    .allowsHitTesting(false)
+
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.black.opacity(0.45))
+                    .fill(Color.black.opacity(0.25))
                     .frame(width: 160, height: 120)
                     .allowsHitTesting(false)
 

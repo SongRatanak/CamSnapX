@@ -488,17 +488,20 @@ private extension ScrollingCaptureOverlayController {
             scrollingDeltaAccumulator = 0
 
             let now = CACurrentMediaTime()
-            let captureInterval = event.hasPreciseScrollingDeltas ? 0.35 : minCaptureInterval
-            if now - lastCaptureTime >= captureInterval {
+            if now - lastCaptureTime >= minCaptureInterval {
                 lastCaptureTime = now
 
+                // Cancel any pending delayed capture since we're capturing now
                 scrollCaptureWorkItem?.cancel()
-                let delay = event.hasPreciseScrollingDeltas ? 0.35 : scrollRenderDelay
+                scrollCaptureWorkItem = nil
+
+                // Schedule capture after a brief render delay to let the
+                // scroll settle on screen before taking a screenshot
                 let workItem = DispatchWorkItem { [weak self] in
                     self?.scrollingCaptureManager.userDidScroll()
                 }
                 scrollCaptureWorkItem = workItem
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+                DispatchQueue.main.asyncAfter(deadline: .now() + scrollRenderDelay, execute: workItem)
             }
         }
     }

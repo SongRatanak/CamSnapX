@@ -10,16 +10,8 @@ import AppKit
 import SwiftUI
 
 final class ScrollingCaptureControlModel: ObservableObject {
-    let objectWillChange = ObservableObjectPublisher()
-
-    var previewImage: NSImage? {
-        didSet { objectWillChange.send() }
-    }
-
-    var capturedHeight: Int = 0 {
-        didSet { objectWillChange.send() }
-    }
-
+    @Published var previewImage: NSImage?
+    @Published var capturedHeight: Int = 0
 }
 
 struct ScrollingCaptureControlView: View {
