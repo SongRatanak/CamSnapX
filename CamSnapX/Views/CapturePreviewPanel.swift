@@ -22,6 +22,7 @@ struct CapturePreviewView: View {
     let onClose: () -> Void
     let onCopy: () -> Void
     let onSave: () -> Bool
+    let windowProvider: () -> NSWindow?
 
     @State private var isHovering = false
     @State private var savedFeedback = false
@@ -102,11 +103,14 @@ struct CapturePreviewView: View {
         guard !isDismissing else { return }
         isDismissing = true
 
-        // Animate the panel frame sliding left
-        guard let window = NSApp.windows.first(where: { $0.contentView?.subviews.contains(where: { ($0 as? NSHostingView<CapturePreviewView>) != nil }) ?? false }) ?? NSApp.keyWindow else {
-            onClose()
-            return
-        }
+        // Capture window reference before onClose removes it from tracking
+        let window = windowProvider()
+
+        // Notify immediately so sibling panels relayout right away
+        onClose()
+
+        // Animate the panel sliding left and fading out
+        guard let window else { return }
 
         let currentFrame = window.frame
         let targetFrame = NSRect(
@@ -121,8 +125,8 @@ struct CapturePreviewView: View {
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             window.animator().setFrame(targetFrame, display: true)
             window.animator().alphaValue = 0
-        }, completionHandler: { [onClose] in
-            onClose()
+        }, completionHandler: {
+            window.orderOut(nil)
         })
     }
 
@@ -188,6 +192,7 @@ struct CapturePreviewView: View {
         fileURL: nil,
         onClose: {},
         onCopy: {},
-        onSave: { true }
+        onSave: { true },
+        windowProvider: { nil }
     )
 }

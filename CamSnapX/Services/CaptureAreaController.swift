@@ -16,7 +16,11 @@ final class CaptureAreaController: NSObject {
     static let shared = CaptureAreaController()
 
     private var previewWindows: [NSPanel] = []
+    private var previewScreen: NSScreen?
     private var lastCapturedRect: CGRect?
+    private let previewSize = NSSize(width: 192, height: 152)
+    private let previewPadding: CGFloat = 16
+    private let previewSpacing: CGFloat = 12
 
     var hasPreviousArea: Bool {
         lastCapturedRect != nil
@@ -286,18 +290,24 @@ final class CaptureAreaController: NSObject {
     private func showPreview(with image: NSImage, fileURL: URL?, on screen: NSScreen?) {
         guard let screen else { return }
 
-        let size = NSSize(width: 232, height: 152)
-        let padding: CGFloat = 16
-        let spacing: CGFloat = 12
+        previewScreen = screen
+        prunePreviewWindows()
+        if let fileURL,
+           let existing = previewWindows.first(where: { $0.representedURL == fileURL }) {
+            existing.makeKeyAndOrderFront(nil)
+            relayoutPreviewWindows(animated: false)
+            return
+        }
+
         let stackIndex = previewWindows.count
-        let stackedOffset = CGFloat(stackIndex) * (size.height + spacing)
+        let stackedOffset = CGFloat(stackIndex) * (previewSize.height + previewSpacing)
         let origin = NSPoint(
-            x: screen.visibleFrame.minX + padding,
-            y: screen.visibleFrame.minY + padding + stackedOffset
+            x: screen.visibleFrame.minX + previewPadding,
+            y: screen.visibleFrame.minY + previewPadding + stackedOffset
         )
 
         let panel = PreviewPanel(
-            contentRect: NSRect(origin: origin, size: size),
+            contentRect: NSRect(origin: origin, size: previewSize),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
@@ -310,25 +320,70 @@ final class CaptureAreaController: NSObject {
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
+        panel.representedURL = fileURL
+
         let preview = CapturePreviewView(
             image: image,
             fileURL: fileURL,
-            onClose: { [weak self] in
-                panel.orderOut(nil)
+            onClose: { [weak self, weak panel] in
+                guard let panel else { return }
                 self?.previewWindows.removeAll { $0 == panel }
+                // Dispatch to next run loop so the relayout animation
+                // runs in its own context, not inside the dismiss animation.
+                DispatchQueue.main.async {
+                    self?.relayoutPreviewWindows(animated: true)
+                }
             },
             onCopy: { [weak self] in
                 self?.copyToPasteboard(image: image, fileURL: fileURL)
             },
             onSave: { [weak self] in
                 return self?.saveImageToDesktop(image: image, fileURL: fileURL) != nil
-            }
+            },
+            windowProvider: { [weak panel] in panel }
         )
 
         panel.contentView = NSHostingView(rootView: preview)
         panel.makeKeyAndOrderFront(nil)
 
         previewWindows.append(panel)
+        relayoutPreviewWindows(animated: false)
+    }
+
+    private func prunePreviewWindows() {
+        previewWindows.removeAll { !$0.isVisible }
+    }
+
+    private func relayoutPreviewWindows(animated: Bool) {
+        prunePreviewWindows()
+        guard !previewWindows.isEmpty else { return }
+
+        // Use the stored screen from when the previews were created
+        guard let targetScreen = previewScreen ?? previewWindows.first?.screen ?? NSScreen.main else { return }
+
+        let orderedPanels = previewWindows
+            .sorted { $0.frame.origin.y < $1.frame.origin.y }
+
+        for (index, panel) in orderedPanels.enumerated() {
+            let stackedOffset = CGFloat(index) * (previewSize.height + previewSpacing)
+            let targetFrame = NSRect(
+                x: targetScreen.visibleFrame.minX + previewPadding,
+                y: targetScreen.visibleFrame.minY + previewPadding + stackedOffset,
+                width: previewSize.width,
+                height: previewSize.height
+            )
+
+            if animated {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.3
+                    context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    context.allowsImplicitAnimation = true
+                    panel.animator().setFrame(targetFrame, display: true)
+                }
+            } else {
+                panel.setFrame(targetFrame, display: true)
+            }
+        }
     }
 
     private func screenForRect(_ rect: CGRect) -> NSScreen? {
