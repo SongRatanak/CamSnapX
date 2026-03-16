@@ -72,9 +72,15 @@ struct ContentView: View {
                     CaptureHistoryPanelController.shared.show(store: historyStore)
                     dismiss()
                 }
-                MenuRowButton("About CamSnapX...", systemImage: "info.circle") { }
+                MenuRowButton("About CamSnapX...", systemImage: "info.circle") {
+                    SettingsPanelController.shared.show(tab: .about)
+                    dismiss()
+                }
                 MenuRowButton("Check for Updates...", systemImage: "arrow.triangle.2.circlepath") { }
-                MenuRowButton("Settings...", systemImage: "gearshape") { }
+                MenuRowButton("Settings...", systemImage: "gearshape") {
+                    SettingsPanelController.shared.show(tab: .general)
+                    dismiss()
+                }
                 Divider()
                 MenuRowButton("Quit", systemImage: "power") {
                     NSApplication.shared.terminate(nil)

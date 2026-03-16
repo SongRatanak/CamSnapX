@@ -82,11 +82,20 @@ struct CapturePreviewView: View {
         }
         .padding(6)
         .allowsHitTesting(!isDismissing)
+        .onTapGesture(count: 2) {
+            openImageViewer()
+        }
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
                 isHovering = hovering
             }
         }
+    }
+
+    private func openImageViewer() {
+        let viewer = ImageViewerController(image: image, fileURL: fileURL)
+        ImageViewerController.activeViewers.append(viewer)
+        viewer.show()
     }
 
     private func dismissWithAnimation() {
