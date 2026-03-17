@@ -24,6 +24,9 @@ final class CaptureAreaController: NSObject {
     private let previewPadding: CGFloat = 12
     private let previewSpacing: CGFloat = 8
     private var didShowScreenCaptureAlert = false
+    private var movingPreviewPanels: Set<ObjectIdentifier> = []
+    private var suppressPreviewMovesUntil: Date?
+    private var disablePreviewMoveAnimationsUntil: Date?
 
     var hasPreviousArea: Bool {
         lastCapturedRect != nil
@@ -42,9 +45,13 @@ final class CaptureAreaController: NSObject {
         }
     }
 
-    func captureFullScreen() {
-        lastUserScreen = screenForPoint(NSEvent.mouseLocation)
-        startSystemCapture(arguments: ["-c"])
+    func captureFullScreen(on screen: NSScreen? = nil) {
+        let targetScreen = screen ?? screenForPoint(NSEvent.mouseLocation) ?? NSScreen.main
+        lastUserScreen = targetScreen
+        guard let targetScreen else { return }
+        Task { [weak self] in
+            await self?.captureAndShow(rect: targetScreen.frame)
+        }
     }
 
     func captureWindow() {
@@ -71,7 +78,13 @@ final class CaptureAreaController: NSObject {
         guard let image = NSImage(contentsOf: fileURL) else { return }
         // History restore should show on the user's current screen to avoid follow-timer jumps.
         lastUserScreen = screenForPoint(NSEvent.mouseLocation)
-        showPreview(with: image, fileURL: fileURL, on: lastUserScreen ?? currentUserScreen())
+        suppressPreviewMovesUntil = Date().addingTimeInterval(0.3)
+        disablePreviewMoveAnimationsUntil = Date().addingTimeInterval(0.6)
+        let targetScreen = lastUserScreen ?? currentUserScreen()
+        if let targetScreen {
+            currentPreviewScreenKey = screenKey(for: targetScreen)
+        }
+        showPreview(with: image, fileURL: fileURL, on: targetScreen)
     }
 
     func showPreviewForImage(_ image: NSImage) {
@@ -289,7 +302,6 @@ final class CaptureAreaController: NSObject {
         if let fileURL, FileManager.default.fileExists(atPath: fileURL.path) {
             do {
                 try FileManager.default.copyItem(at: fileURL, to: destinationURL)
-                CaptureHistoryStore.shared.add(destinationURL)
                 print("Saved capture to Desktop:", destinationURL.path)
                 return destinationURL
             } catch {
@@ -305,7 +317,6 @@ final class CaptureAreaController: NSObject {
 
         do {
             try pngData.write(to: destinationURL, options: .atomic)
-            CaptureHistoryStore.shared.add(destinationURL)
             print("Saved capture to Desktop:", destinationURL.path)
             return destinationURL
         } catch {
@@ -486,14 +497,18 @@ final class CaptureAreaController: NSObject {
     }
 
     private func updatePreviewScreenIfNeeded() {
+        if let suppressUntil = suppressPreviewMovesUntil, Date() < suppressUntil {
+            return
+        }
         guard !previewWindows.isEmpty, let screen = currentUserScreen() else { return }
         let key = screenKey(for: screen)
         guard key != currentPreviewScreenKey else { return }
         currentPreviewScreenKey = key
-        moveAllPreviews(to: screen)
+        let shouldAnimate = !(disablePreviewMoveAnimationsUntil.map { Date() < $0 } ?? false)
+        moveAllPreviews(to: screen, animate: shouldAnimate)
     }
 
-    private func moveAllPreviews(to screen: NSScreen) {
+    private func moveAllPreviews(to screen: NSScreen, animate: Bool) {
         let orderedPanels = previewWindows.sorted { $0.frame.origin.y < $1.frame.origin.y }
         for (index, panel) in orderedPanels.enumerated() {
             let stackedOffset = CGFloat(index) * (previewSize.height + previewSpacing)
@@ -503,11 +518,41 @@ final class CaptureAreaController: NSObject {
                 width: previewSize.width,
                 height: previewSize.height
             )
+            if !animate {
+                panel.setFrame(targetFrame, display: true)
+                panel.alphaValue = 1
+                continue
+            }
+            let panelID = ObjectIdentifier(panel)
+            if movingPreviewPanels.contains(panelID) {
+                continue
+            }
+            movingPreviewPanels.insert(panelID)
+            panel.alphaValue = 1
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.16
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                context.duration = 0.08
+                context.timingFunction = CAMediaTimingFunction(name: .linear)
                 context.allowsImplicitAnimation = true
-                panel.animator().setFrame(targetFrame, display: true)
+                panel.animator().alphaValue = 0
+            } completionHandler: { [weak self, weak panel] in
+                guard let self, let panel else { return }
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0
+                    context.allowsImplicitAnimation = false
+                    panel.setFrame(targetFrame, display: true)
+                    panel.alphaValue = 0
+                } completionHandler: { [weak self, weak panel] in
+                    guard let self, let panel else { return }
+                    NSAnimationContext.runAnimationGroup { context in
+                        context.duration = 0.12
+                        context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                        context.allowsImplicitAnimation = true
+                        panel.animator().alphaValue = 1
+                    } completionHandler: { [weak self, weak panel] in
+                        guard let self, let panel else { return }
+                        self.movingPreviewPanels.remove(ObjectIdentifier(panel))
+                    }
+                }
             }
         }
     }

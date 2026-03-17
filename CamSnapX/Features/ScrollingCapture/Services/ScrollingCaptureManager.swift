@@ -27,6 +27,11 @@ final class ScrollingCaptureManager {
     weak var delegate: ScrollingCaptureDelegate?
 
     private(set) var isScrollingCaptureActive = false
+    
+    // Preview throttling
+    private var lastPreviewUpdateTime: CFTimeInterval = 0
+    private static let previewUpdateInterval: CFTimeInterval = 0.25
+
     private var lastFrame: CGImage?
     private var lastHash: UInt64 = 0
     private var targetWidth: Int = 0
@@ -97,15 +102,32 @@ final class ScrollingCaptureManager {
             lastHash = averageHash(scaled) ?? 0
             capturedStrips.append((image: scaled, height: scaled.height))
             totalStitchedHeight = scaled.height
+            lastPreviewUpdateTime = CACurrentMediaTime()
             delegate?.didUpdateStitchedPreview(scaled, totalHeight: scaled.height)
+            print("[ScrollCapture] First frame: \(scaled.width)x\(scaled.height)")
             return
         }
 
         // Primary: Apple Vision framework for precise alignment
         // Fallback: multi-band template matching, then row-signature matching
-        guard let shift = detectShiftVision(previous: previous, next: scaled)
-            ?? detectShiftBand(previous: previous, next: scaled)
-            ?? detectShiftByRowSignature(previous: previous, next: scaled) else {
+        var method = "Vision"
+        let shift: Int?
+        if let vShift = detectShiftVision(previous: previous, next: scaled) {
+            shift = vShift
+            method = "Vision"
+        } else if let bShift = detectShiftBand(previous: previous, next: scaled) {
+            shift = bShift
+            method = "Band"
+        } else if let rShift = detectShiftByRowSignature(previous: previous, next: scaled) {
+            shift = rShift
+            method = "RowSignature"
+        } else {
+            shift = nil
+            method = "Failed"
+        }
+        
+        guard let shift = shift else {
+            print("[ScrollCapture] Shift detection failed")
             delegate?.didDetectScrollTooFast()
             return
         }
@@ -122,6 +144,7 @@ final class ScrollingCaptureManager {
             lastFrame = scaled
             lastHash = hash ?? lastHash
             if duplicateCount >= maxDuplicatesBeforeStop {
+                print("[ScrollCapture] Max duplicates reached")
                 delegate?.didDetectScrollTooFast()
             }
             return
@@ -134,9 +157,23 @@ final class ScrollingCaptureManager {
         }
 
         let overlap = scaled.height - shift
-        guard overlap >= 8 else {
+        // Better overlap validation: ensure sufficient new content
+        let minOverlapRatio: CGFloat = 0.3
+        let maxOverlapRatio: CGFloat = 0.95
+        let overlapRatio = CGFloat(overlap) / CGFloat(scaled.height)
+        
+        guard overlap >= 8, overlapRatio >= minOverlapRatio, overlapRatio <= maxOverlapRatio else {
             lastFrame = scaled
             lastHash = hash ?? lastHash
+            return
+        }
+
+        // Reject unstable matches that would create split/mixed stitched content.
+        guard isOverlapConsistent(previous: previous, next: scaled, overlap: overlap) else {
+            print("[ScrollCapture] Rejected frame due to low overlap consistency (\(method), shift: \(shift))")
+            lastFrame = scaled
+            lastHash = hash ?? lastHash
+            delegate?.didDetectScrollTooFast()
             return
         }
 
@@ -153,9 +190,13 @@ final class ScrollingCaptureManager {
         duplicateCount = 0
         lastAcceptedShift = shift
 
-        // Generate a quick preview
-        if let preview = buildPreviewImage() {
-            delegate?.didUpdateStitchedPreview(preview, totalHeight: totalStitchedHeight)
+        // Throttle preview updates to every 250ms
+        let now = CACurrentMediaTime()
+        if now - lastPreviewUpdateTime >= Self.previewUpdateInterval {
+            if let preview = buildPreviewImage() {
+                delegate?.didUpdateStitchedPreview(preview, totalHeight: totalStitchedHeight)
+                lastPreviewUpdateTime = now
+            }
         }
     }
 
@@ -395,6 +436,67 @@ final class ScrollingCaptureManager {
 
         guard count > 0 else { return .greatestFiniteMagnitude }
         return totalDiff / count
+    }
+
+    /// Validates that previous-bottom and next-top overlap are visually similar.
+    /// This prevents appending strips when translation matching picks a wrong shift.
+    private func isOverlapConsistent(previous: CGImage, next: CGImage, overlap: Int) -> Bool {
+        guard overlap >= 12 else { return false }
+
+        let sampleWidth = min(220, previous.width, next.width)
+        guard sampleWidth >= 40 else { return false }
+
+        let previousOverlapRect = CGRect(
+            x: 0,
+            y: previous.height - overlap,
+            width: sampleWidth,
+            height: overlap
+        )
+        let nextOverlapRect = CGRect(x: 0, y: 0, width: sampleWidth, height: overlap)
+
+        guard let prevOverlap = previous.cropping(to: previousOverlapRect),
+              let nextOverlap = next.cropping(to: nextOverlapRect),
+              let prevSmall = resizeImage(prevOverlap, targetWidth: 120),
+              let nextSmall = resizeImage(nextOverlap, targetWidth: 120),
+              let prevData = prevSmall.dataProvider?.data,
+              let nextData = nextSmall.dataProvider?.data,
+              let prevBytes = CFDataGetBytePtr(prevData),
+              let nextBytes = CFDataGetBytePtr(nextData) else {
+            return false
+        }
+
+        let w = min(prevSmall.width, nextSmall.width)
+        let h = min(prevSmall.height, nextSmall.height)
+        guard w > 0, h > 0 else { return false }
+
+        let pBPR = prevSmall.bytesPerRow
+        let nBPR = nextSmall.bytesPerRow
+        let rowStep = max(1, h / 36)
+        let colStep = max(1, w / 36)
+
+        var totalDiff = 0.0
+        var sampleCount = 0.0
+
+        for y in stride(from: 0, to: h, by: rowStep) {
+            let pRow = y * pBPR
+            let nRow = y * nBPR
+            for x in stride(from: 0, to: w, by: colStep) {
+                let pi = pRow + x * 4
+                let ni = nRow + x * 4
+                let pr = Double(prevBytes[pi])
+                let pg = Double(prevBytes[pi + 1])
+                let pb = Double(prevBytes[pi + 2])
+                let nr = Double(nextBytes[ni])
+                let ng = Double(nextBytes[ni + 1])
+                let nb = Double(nextBytes[ni + 2])
+                totalDiff += abs(pr - nr) + abs(pg - ng) + abs(pb - nb)
+                sampleCount += 3
+            }
+        }
+
+        guard sampleCount > 0 else { return false }
+        let meanChannelDiff = totalDiff / sampleCount
+        return meanChannelDiff < 22.0
     }
 
     // MARK: - Stitching (one-shot at delivery)

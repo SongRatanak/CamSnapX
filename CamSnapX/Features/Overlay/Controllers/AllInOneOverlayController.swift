@@ -123,7 +123,7 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureSessionHost {
             overlayView.onCaptureFullscreen = { [weak self] in
                 self?.close()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    CaptureAreaController.shared.captureFullScreen()
+                    CaptureAreaController.shared.captureFullScreen(on: screen)
                 }
             }
             overlayView.onCaptureWindow = { [weak self] in

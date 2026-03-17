@@ -39,8 +39,8 @@ extension ScrollingCaptureSessionHost {
 
 final class ScrollingCaptureSession: ScrollingCaptureDelegate {
     // MARK: - Constants
-    private static let minCaptureInterval: CFTimeInterval = 0.15
-    private static let scrollRenderDelay: CFTimeInterval = 0.12
+    private static let minCaptureInterval: CFTimeInterval = 0.18
+    private static let scrollRenderDelay: CFTimeInterval = 0.18
     private static let thresholdMultiplier: CGFloat = 0.18
     private static let thresholdMin: CGFloat = 80
     private static let thresholdMax: CGFloat = 200
@@ -52,12 +52,16 @@ final class ScrollingCaptureSession: ScrollingCaptureDelegate {
     let manager = ScrollingCaptureManager()
 
     private var scrollingGlobalMonitor: Any?
-    private var scrollingLocalMonitor: Any?
     private var scrollingDeltaAccumulator: CGFloat = 0
     private var scrollingCaptureThreshold: CGFloat = 140
     private var scrollingDirection: CGFloat = 0
+    private var lockedCaptureDirection: CGFloat = 0
     private var lastCaptureTime: CFTimeInterval = 0
     private var scrollCaptureWorkItem: DispatchWorkItem?
+    
+    // Adaptive threshold tracking
+    private var scrollSpeedHistory: [CGFloat] = []
+    private let maxSpeedHistory: Int = 15
 
     private var selectionBorderPanel: NSPanel?
 
@@ -141,6 +145,7 @@ final class ScrollingCaptureSession: ScrollingCaptureDelegate {
             showSelectionBorder()
             scrollingDeltaAccumulator = 0
             scrollingDirection = 0
+            lockedCaptureDirection = 0
             lastCaptureTime = 0
             startScrollMonitor()
         } else {
@@ -218,13 +223,12 @@ final class ScrollingCaptureSession: ScrollingCaptureDelegate {
 
     private func startScrollMonitor() {
         stopScrollMonitor()
+        scrollSpeedHistory.removeAll() // Reset adaptive state for new capture session
         updateScrollThreshold()
+        // Use only global monitor to avoid double-processing scroll events
+        // Local monitor would duplicate events and cause premature frame captures
         scrollingGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
             self?.handleScrollEvent(event)
-        }
-        scrollingLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-            self?.handleScrollEvent(event)
-            return event
         }
     }
 
@@ -233,18 +237,38 @@ final class ScrollingCaptureSession: ScrollingCaptureDelegate {
             NSEvent.removeMonitor(scrollingGlobalMonitor)
         }
         scrollingGlobalMonitor = nil
-        if let scrollingLocalMonitor {
-            NSEvent.removeMonitor(scrollingLocalMonitor)
-        }
-        scrollingLocalMonitor = nil
         scrollCaptureWorkItem?.cancel()
         scrollCaptureWorkItem = nil
+        lockedCaptureDirection = 0
     }
 
     private func updateScrollThreshold() {
         let height = max(0, host?.sessionSelectionRect.height ?? 0)
         let dynamic = height * Self.thresholdMultiplier
-        scrollingCaptureThreshold = max(Self.thresholdMin, min(Self.thresholdMax, dynamic))
+        var baseThreshold = max(Self.thresholdMin, min(Self.thresholdMax, dynamic))
+        
+        // Adaptive threshold: adjust based on observed scroll speed
+        if !scrollSpeedHistory.isEmpty {
+            let avgSpeed = scrollSpeedHistory.reduce(0, +) / CGFloat(scrollSpeedHistory.count)
+            let maxHistoricalSpeed = scrollSpeedHistory.max() ?? 0
+            
+            // If scrolling is fast, increase threshold to avoid too many captures
+            if maxHistoricalSpeed > 800 {
+                baseThreshold *= 1.3
+                print("[ScrollCapture] Adaptive threshold: FAST scrolling detected, threshold *= 1.3")
+            } else if maxHistoricalSpeed > 400 {
+                baseThreshold *= 1.15
+                print("[ScrollCapture] Adaptive threshold: MODERATE scrolling detected, threshold *= 1.15")
+            }
+            // If scrolling is slow/precise, decrease threshold for better coverage
+            else if avgSpeed < 100 {
+                baseThreshold *= 0.85
+                print("[ScrollCapture] Adaptive threshold: SLOW scrolling detected, threshold *= 0.85")
+            }
+        }
+        
+        scrollingCaptureThreshold = max(Self.thresholdMin, min(Self.thresholdMax, baseThreshold))
+        print("[ScrollCapture] Threshold updated: \(String(format: "%.0f", scrollingCaptureThreshold)) (base: \(String(format: "%.0f", dynamic)))")
     }
 
     private func handleScrollEvent(_ event: NSEvent) {
@@ -252,14 +276,30 @@ final class ScrollingCaptureSession: ScrollingCaptureDelegate {
         let rawDelta = event.scrollingDeltaY
         if rawDelta == 0 { return }
         let direction = rawDelta > 0 ? 1.0 : -1.0
+        if lockedCaptureDirection == 0 {
+            lockedCaptureDirection = direction
+        } else if direction != lockedCaptureDirection {
+            scrollingDeltaAccumulator = 0
+            scrollCaptureWorkItem?.cancel()
+            scrollCaptureWorkItem = nil
+            return
+        }
+
         if scrollingDirection == 0 {
             scrollingDirection = direction
         } else if scrollingDirection != direction {
-            scrollingDirection = direction
             scrollingDeltaAccumulator = 0
+            return
         }
 
         let delta = abs(rawDelta)
+        
+        // Track scroll speed for adaptive threshold
+        scrollSpeedHistory.append(delta)
+        if scrollSpeedHistory.count > maxSpeedHistory {
+            scrollSpeedHistory.removeFirst()
+        }
+        
         let threshold = event.hasPreciseScrollingDeltas
             ? max(Self.preciseScrollMin, scrollingCaptureThreshold * Self.preciseScrollMultiplier)
             : scrollingCaptureThreshold

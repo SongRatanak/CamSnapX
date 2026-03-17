@@ -209,7 +209,7 @@ final class ImageViewerController: NSObject, NSWindowDelegate {
 
 // MARK: - Persistence Models
 
-private struct AnnotationSnapshot: Codable {
+@MainActor private struct AnnotationSnapshot: Codable {
     let baseImagePNG: Data
     let annotations: [AnnotationRecord]
 
@@ -228,7 +228,7 @@ private struct AnnotationSnapshot: Codable {
     }
 }
 
-private struct AnnotationRecord: Codable {
+@MainActor private struct AnnotationRecord: Codable {
     let id: UUID
     let tool: String
     let color: ColorRecord
@@ -449,12 +449,12 @@ struct ImageViewerView: View {
                 .frame(width: imageState.image.size.width, height: imageState.image.size.height)
             }
         }
-        .onChange(of: annotationState.selectedTool) {
+        .onChange(of: annotationState.selectedTool) { _, _ in
             if isEditingText {
                 commitTextAnnotation()
             }
         }
-        .onChange(of: annotationState.selectedAnnotationID) { _ in
+        .onChange(of: annotationState.selectedAnnotationID) { _, _ in
             guard let selectedID = annotationState.selectedAnnotationID,
                   let idx = annotationState.annotations.firstIndex(where: { $0.id == selectedID }) else { return }
             let selected = annotationState.annotations[idx]
@@ -470,19 +470,19 @@ struct ImageViewerView: View {
                 break
             }
         }
-        .onChange(of: textEditFontSize) { newValue in
+        .onChange(of: textEditFontSize) { _, newValue in
             guard isEditingText else { return }
             let imageFontSize = imageToViewScale > 0 ? newValue / imageToViewScale : newValue
             annotationState.fontSize = imageFontSize
         }
-        .onChange(of: annotationState.fontSize) { newValue in
+        .onChange(of: annotationState.fontSize) { _, newValue in
             guard isEditingText else { return }
             let viewFontSize = imageToViewScale > 0 ? newValue * imageToViewScale : newValue
             if abs(textEditFontSize - viewFontSize) > 0.5 {
                 textEditFontSize = viewFontSize
             }
         }
-        .onChange(of: annotationState.textStyle) { newValue in
+        .onChange(of: annotationState.textStyle) { _, newValue in
             if isEditingText {
                 textEditStyle = newValue
             } else if let selectedID = annotationState.selectedAnnotationID,
@@ -492,14 +492,14 @@ struct ImageViewerView: View {
                 annotationState.onStateChanged?()
             }
         }
-        .onChange(of: annotationState.arrowStyle) { newValue in
+        .onChange(of: annotationState.arrowStyle) { _, newValue in
             guard let selectedID = annotationState.selectedAnnotationID,
                   let idx = annotationState.annotations.firstIndex(where: { $0.id == selectedID }),
                   annotationState.annotations[idx].tool == .arrow else { return }
             annotationState.annotations[idx].arrowStyle = newValue
             annotationState.onStateChanged?()
         }
-        .onChange(of: annotationState.lineWidth) { newValue in
+        .onChange(of: annotationState.lineWidth) { _, newValue in
             guard let selectedID = annotationState.selectedAnnotationID,
                   let idx = annotationState.annotations.firstIndex(where: { $0.id == selectedID }) else { return }
             let tool = annotationState.annotations[idx].tool
@@ -508,7 +508,7 @@ struct ImageViewerView: View {
                 annotationState.onStateChanged?()
             }
         }
-        .onChange(of: annotationState.selectedColor) { newValue in
+        .onChange(of: annotationState.selectedColor) { _, newValue in
             if isEditingText {
                 textEditColor = newValue
             } else if let selectedID = annotationState.selectedAnnotationID,
@@ -525,13 +525,13 @@ struct ImageViewerView: View {
                 }
             }
         }
-        .onChange(of: annotationState.annotations.map(\.id)) { _ in
+        .onChange(of: annotationState.annotations.map(\.id)) {
             onDidModify()
         }
-        .onChange(of: annotationState.activeAnnotation?.id) { _ in
+        .onChange(of: annotationState.activeAnnotation?.id) {
             onDidModify()
         }
-        .onChange(of: textEditContent) { _ in
+        .onChange(of: textEditContent) {
             if isEditingText {
                 onDidModify()
             }
