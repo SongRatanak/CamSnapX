@@ -1,0 +1,24 @@
+{
+  "source": "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Overlay/Controllers/ScrollingCaptureOverlayController.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Start Capture",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 328
+        }
+      },
+      {
+        "comment": "",
+        "key": "Start",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 335
+        }
+      }
+    ]
+  },
+  "version": 1
+}

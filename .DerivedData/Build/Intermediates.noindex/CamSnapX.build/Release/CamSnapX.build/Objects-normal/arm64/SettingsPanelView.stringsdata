@@ -1,0 +1,104 @@
+{
+  "source": "/Users/songratanak/Documents/CamSnapX/CamSnapX/Settings/Views/SettingsPanelView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "CamSnapX",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 109
+        }
+      },
+      {
+        "comment": "",
+        "key": "© 2026 SongRatanak. All Rights Reserved.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 120
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 177
+        }
+      },
+      {
+        "comment": "",
+        "key": "Never",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 181
+        }
+      },
+      {
+        "comment": "",
+        "key": "After 1 day",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 182
+        }
+      },
+      {
+        "comment": "",
+        "key": "After 3 days",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 183
+        }
+      },
+      {
+        "comment": "",
+        "key": "After 1 week",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 184
+        }
+      },
+      {
+        "comment": "",
+        "key": "After 1 month",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 185
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 194
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 200
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 206
+        }
+      },
+      {
+        "comment": "",
+        "key": "Desktop",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 214
+        }
+      }
+    ]
+  },
+  "version": 1
+}

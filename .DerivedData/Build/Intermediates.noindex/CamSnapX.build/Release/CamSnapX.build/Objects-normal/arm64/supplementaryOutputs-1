@@ -1,0 +1,12 @@
+{
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/App/CamSnapXApp.swift" : {
+    "abi-baseline-json" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CamSnapX.abi.json",
+    "const-values" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CamSnapX-primary.swiftconstvalues",
+    "dependencies" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CamSnapX-primary.d",
+    "diagnostics" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CamSnapX-primary.dia",
+    "objc-header" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CamSnapX-Swift.h",
+    "swiftdoc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CamSnapX.swiftdoc",
+    "swiftmodule" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CamSnapX.swiftmodule",
+    "swiftsourceinfo" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CamSnapX.swiftsourceinfo"
+  }
+}

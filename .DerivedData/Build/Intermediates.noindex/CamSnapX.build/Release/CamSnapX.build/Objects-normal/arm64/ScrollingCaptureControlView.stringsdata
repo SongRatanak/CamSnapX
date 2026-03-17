@@ -1,0 +1,56 @@
+{
+  "source": "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Overlay/Views/ScrollingCaptureControlView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "%lldpx",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 60
+        }
+      },
+      {
+        "comment": "",
+        "key": "Scroll slowly for best results",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 75
+        }
+      },
+      {
+        "comment": "",
+        "key": "Scrolling…",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 43
+        }
+      },
+      {
+        "comment": "",
+        "key": "Slow down — scrolling too fast",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 69
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 82
+        }
+      },
+      {
+        "comment": "",
+        "key": "Done",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 95
+        }
+      }
+    ]
+  },
+  "version": 1
+}

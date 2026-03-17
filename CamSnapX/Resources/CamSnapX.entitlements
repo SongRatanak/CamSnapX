@@ -8,5 +8,15 @@
     <true/>
     <key>com.apple.security.files.desktop</key>
     <true/>
+    <key>com.apple.security.files.pictures</key>
+    <true/>
+    <key>com.apple.security.files.downloads</key>
+    <true/>
+    <key>com.apple.security.files.documents</key>
+    <true/>
+    <key>com.apple.security.files.movies</key>
+    <true/>
+    <key>com.apple.security.files.music</key>
+    <true/>
 </dict>
 </plist>

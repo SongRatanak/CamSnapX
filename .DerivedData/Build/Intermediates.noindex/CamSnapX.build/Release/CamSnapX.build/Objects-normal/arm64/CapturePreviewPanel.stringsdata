@@ -1,0 +1,32 @@
+{
+  "source": "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Capture/Views/CapturePreviewPanel.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Copy",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 74
+        }
+      },
+      {
+        "comment": "",
+        "key": "Saved!",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 79
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save",
+        "location": {
+          "startingColumn": 55,
+          "startingLine": 79
+        }
+      }
+    ]
+  },
+  "version": 1
+}

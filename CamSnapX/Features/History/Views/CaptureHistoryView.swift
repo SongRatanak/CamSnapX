@@ -16,6 +16,10 @@ struct CaptureHistoryView: View {
     }
 }
 
-#Preview {
-    CaptureHistoryView(store: CaptureHistoryStore.shared)
+#if DEBUG
+struct CaptureHistoryView_Previews: PreviewProvider {
+    static var previews: some View {
+        CaptureHistoryView(store: CaptureHistoryStore.shared)
+    }
 }
+#endif

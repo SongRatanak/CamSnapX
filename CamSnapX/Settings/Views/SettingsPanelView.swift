@@ -5,16 +5,19 @@
 //  Created by SongRatanak on 15/3/26.
 //
 
+import AppKit
 import Combine
 import SwiftUI
 
 enum SettingsTab: String, CaseIterable {
     case general = "General"
+    case shortcuts = "Shortcuts"
     case about = "About"
 
     var icon: String {
         switch self {
         case .general: return "gearshape"
+        case .shortcuts: return "command"
         case .about: return "info.circle"
         }
     }
@@ -26,6 +29,9 @@ final class SettingsPanelViewModel: ObservableObject {
 
 struct SettingsPanelView: View {
     @ObservedObject var viewModel: SettingsPanelViewModel
+    @State private var recordingAction: ShortcutAction? = nil
+    @State private var recordingMonitor: Any? = nil
+    @AppStorage("shortcut.scope") private var shortcutScopeRaw = ShortcutScope.appOnly.rawValue
 
     var body: some View {
         VStack(spacing: 0) {
@@ -41,6 +47,8 @@ struct SettingsPanelView: View {
                 switch viewModel.selectedTab {
                 case .general:
                     generalTab
+                case .shortcuts:
+                    shortcutsTab
                 case .about:
                     aboutTab
                 }
@@ -48,6 +56,9 @@ struct SettingsPanelView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(width: 520, height: 460)
+        .onDisappear {
+            stopRecording()
+        }
     }
 
     // MARK: - Tab Bar
@@ -252,16 +263,113 @@ struct SettingsPanelView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
     }
+
+    // MARK: - Shortcuts Tab (UI only)
+
+    private var shortcutsTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                settingsSection("Shortcut Scope") {
+                    settingsRow("Shortcut scope") {
+                        Picker("", selection: $shortcutScopeRaw) {
+                            Text("App Only").tag(ShortcutScope.appOnly.rawValue)
+                            Text("Global").tag(ShortcutScope.global.rawValue)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 180)
+                    }
+                    settingsRow("Accessibility") {
+                        Button("Open System Settings") {
+                            openAccessibilitySettings()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+
+                settingsSection("General") {
+                    shortcutRow(.allInOne)
+                    shortcutRow(.toggleDesktopIcons)
+                    shortcutRow(.openCaptureHistory)
+                    shortcutRow(.restoreLastCapture)
+                }
+
+                settingsSection("Screenshots") {
+                    shortcutRow(.captureArea)
+                    shortcutRow(.capturePreviousArea)
+                    shortcutRow(.captureFullscreen)
+                    shortcutRow(.captureWindow)
+                    shortcutRow(.selfTimer)
+                    shortcutRow(.captureAreaCopy)
+                    shortcutRow(.captureAreaSave)
+                }
+            }
+            .padding(24)
+        }
+        .onChange(of: shortcutScopeRaw) { _ in
+            ShortcutManager.shared.requestAccessibilityIfNeeded()
+            ShortcutManager.shared.updateMonitoring()
+        }
+    }
+
+    private func shortcutRow(_ action: ShortcutAction) -> some View {
+        settingsRow(action.label) {
+            Button(recordingAction == action ? "Type shortcut..." : (storedShortcut(for: action) ?? "Record shortcut")) {
+                startRecording(action)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+    }
+
+    private func startRecording(_ action: ShortcutAction) {
+        stopRecording()
+        recordingAction = action
+        recordingMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
+            if let shortcut = ShortcutKey(event: event)?.displayString {
+                saveShortcut(shortcut, for: action)
+            }
+            stopRecording()
+            return nil
+        }
+    }
+
+    private func stopRecording() {
+        if let monitor = recordingMonitor {
+            NSEvent.removeMonitor(monitor)
+            recordingMonitor = nil
+        }
+        recordingAction = nil
+    }
+
+    private func storedShortcut(for action: ShortcutAction) -> String? {
+        UserDefaults.standard.string(forKey: action.userDefaultsKey)
+    }
+
+    private func saveShortcut(_ value: String, for action: ShortcutAction) {
+        UserDefaults.standard.set(value, forKey: action.userDefaultsKey)
+    }
+
+    private func openAccessibilitySettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }
+        NSWorkspace.shared.open(url)
+    }
 }
 
-#Preview("About") {
-    SettingsPanelView(viewModel: {
-        let vm = SettingsPanelViewModel()
-        vm.selectedTab = .about
-        return vm
-    }())
-}
+#if DEBUG
+struct SettingsPanelView_Previews: PreviewProvider {
+    static var previews: some View {
+        Group {
+            SettingsPanelView(viewModel: {
+                let vm = SettingsPanelViewModel()
+                vm.selectedTab = .about
+                return vm
+            }())
+            .previewDisplayName("About")
 
-#Preview("General") {
-    SettingsPanelView(viewModel: SettingsPanelViewModel())
+            SettingsPanelView(viewModel: SettingsPanelViewModel())
+                .previewDisplayName("General")
+        }
+    }
 }
+#endif

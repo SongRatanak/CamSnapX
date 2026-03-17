@@ -1,0 +1,16 @@
+{
+  "source": "/Users/songratanak/Documents/CamSnapX/CamSnapX/App/CamSnapXApp.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "CamSnapX",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 13
+        }
+      }
+    ]
+  },
+  "version": 1
+}

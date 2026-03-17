@@ -120,10 +120,14 @@ struct ScrollingCaptureControlView: View {
     }
 }
 
-#Preview {
-    ScrollingCaptureControlView(
-        onCancel: {}, onDone: {}, showProgress: true,
-        model: ScrollingCaptureControlModel()
-    )
-    .background(.black)
+#if DEBUG
+struct ScrollingCaptureControlView_Previews: PreviewProvider {
+    static var previews: some View {
+        ScrollingCaptureControlView(
+            onCancel: {}, onDone: {}, showProgress: true,
+            model: ScrollingCaptureControlModel()
+        )
+        .background(.black)
+    }
 }
+#endif

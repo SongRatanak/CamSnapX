@@ -352,6 +352,9 @@ struct ImageViewerView: View {
     @State private var textEditBoxWidth: CGFloat? = nil
     @State private var imageToViewScale: CGFloat = 1.0
     @State private var editingAnnotationID: UUID? = nil
+    @State private var zoomScale: CGFloat = 1.0
+    @State private var viewportSize: CGSize = .zero
+    @State private var hasAppliedInitialFit = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -365,13 +368,17 @@ struct ImageViewerView: View {
                     )
                     onSaveAs(rendered)
                 },
-                onDone: handleDone
+                onDone: handleDone,
+                zoomScale: zoomScale,
+                onZoomOut: zoomOut,
+                onZoomToFit: zoomToFit,
+                onZoomIn: zoomIn
             )
 
             Divider()
 
             // Canvas with image + annotations
-            ScrollView([.vertical, .horizontal]) {
+            ZoomableScrollView(zoomScale: $zoomScale) {
                 ZStack(alignment: .topLeading) {
                     AnnotationCanvasRepresentable(
                         image: $imageState.image,
@@ -448,13 +455,30 @@ struct ImageViewerView: View {
                 }
                 .frame(width: imageState.image.size.width, height: imageState.image.size.height)
             }
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear {
+                            viewportSize = proxy.size
+                        }
+                        .onChange(of: proxy.size) { newValue in
+                            viewportSize = newValue
+                        }
+                }
+            )
         }
-        .onChange(of: annotationState.selectedTool) { _, _ in
+        .onChange(of: viewportSize) { _ in
+            if !hasAppliedInitialFit {
+                zoomToFit()
+                hasAppliedInitialFit = true
+            }
+        }
+        .onChange(of: annotationState.selectedTool) { _ in
             if isEditingText {
                 commitTextAnnotation()
             }
         }
-        .onChange(of: annotationState.selectedAnnotationID) { _, _ in
+        .onChange(of: annotationState.selectedAnnotationID) { _ in
             guard let selectedID = annotationState.selectedAnnotationID,
                   let idx = annotationState.annotations.firstIndex(where: { $0.id == selectedID }) else { return }
             let selected = annotationState.annotations[idx]
@@ -470,19 +494,19 @@ struct ImageViewerView: View {
                 break
             }
         }
-        .onChange(of: textEditFontSize) { _, newValue in
+        .onChange(of: textEditFontSize) { newValue in
             guard isEditingText else { return }
             let imageFontSize = imageToViewScale > 0 ? newValue / imageToViewScale : newValue
             annotationState.fontSize = imageFontSize
         }
-        .onChange(of: annotationState.fontSize) { _, newValue in
+        .onChange(of: annotationState.fontSize) { newValue in
             guard isEditingText else { return }
             let viewFontSize = imageToViewScale > 0 ? newValue * imageToViewScale : newValue
             if abs(textEditFontSize - viewFontSize) > 0.5 {
                 textEditFontSize = viewFontSize
             }
         }
-        .onChange(of: annotationState.textStyle) { _, newValue in
+        .onChange(of: annotationState.textStyle) { newValue in
             if isEditingText {
                 textEditStyle = newValue
             } else if let selectedID = annotationState.selectedAnnotationID,
@@ -492,14 +516,14 @@ struct ImageViewerView: View {
                 annotationState.onStateChanged?()
             }
         }
-        .onChange(of: annotationState.arrowStyle) { _, newValue in
+        .onChange(of: annotationState.arrowStyle) { newValue in
             guard let selectedID = annotationState.selectedAnnotationID,
                   let idx = annotationState.annotations.firstIndex(where: { $0.id == selectedID }),
                   annotationState.annotations[idx].tool == .arrow else { return }
             annotationState.annotations[idx].arrowStyle = newValue
             annotationState.onStateChanged?()
         }
-        .onChange(of: annotationState.lineWidth) { _, newValue in
+        .onChange(of: annotationState.lineWidth) { newValue in
             guard let selectedID = annotationState.selectedAnnotationID,
                   let idx = annotationState.annotations.firstIndex(where: { $0.id == selectedID }) else { return }
             let tool = annotationState.annotations[idx].tool
@@ -508,7 +532,7 @@ struct ImageViewerView: View {
                 annotationState.onStateChanged?()
             }
         }
-        .onChange(of: annotationState.selectedColor) { _, newValue in
+        .onChange(of: annotationState.selectedColor) { newValue in
             if isEditingText {
                 textEditColor = newValue
             } else if let selectedID = annotationState.selectedAnnotationID,
@@ -525,13 +549,13 @@ struct ImageViewerView: View {
                 }
             }
         }
-        .onChange(of: annotationState.annotations.map(\.id)) {
+        .onChange(of: annotationState.annotations.map(\.id)) { _ in
             onDidModify()
         }
-        .onChange(of: annotationState.activeAnnotation?.id) {
+        .onChange(of: annotationState.activeAnnotation?.id) { _ in
             onDidModify()
         }
-        .onChange(of: textEditContent) {
+        .onChange(of: textEditContent) { _ in
             if isEditingText {
                 onDidModify()
             }
@@ -542,6 +566,36 @@ struct ImageViewerView: View {
             }
         }
     }
+
+    private func clampZoom(_ value: CGFloat) -> CGFloat {
+        min(max(value, 0.25), 4.0)
+    }
+
+    private func zoomIn() {
+        zoomScale = clampZoom(zoomScale + 0.1)
+    }
+
+    private func zoomOut() {
+        zoomScale = clampZoom(zoomScale - 0.1)
+    }
+
+    private func zoomToFit() {
+        let target = fitScale()
+        guard target > 0 else { return }
+        zoomScale = clampZoom(target)
+    }
+
+    private func fitScale() -> CGFloat {
+        let imageSize = imageState.image.size
+        guard viewportSize.width > 0,
+              viewportSize.height > 0,
+              imageSize.width > 0,
+              imageSize.height > 0 else { return 0 }
+        let scaleX = viewportSize.width / imageSize.width
+        let scaleY = viewportSize.height / imageSize.height
+        return min(scaleX, scaleY)
+    }
+
 
     private func handleDone() {
         commitPendingEdits()
@@ -617,5 +671,109 @@ struct ImageViewerView: View {
         textEditColor = nil
         textEditBoxWidth = nil
         editingAnnotationID = nil
+    }
+}
+
+private struct ZoomableScrollView<Content: View>: NSViewRepresentable {
+    @Binding var zoomScale: CGFloat
+    let content: () -> Content
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(zoomScale: $zoomScale)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = true
+        scrollView.allowsMagnification = true
+        scrollView.minMagnification = 0.25
+        scrollView.maxMagnification = 4.0
+
+        let hostingView = NSHostingView(rootView: content())
+        hostingView.layoutSubtreeIfNeeded()
+        hostingView.frame = NSRect(origin: .zero, size: hostingView.fittingSize)
+        scrollView.documentView = hostingView
+
+        context.coordinator.attach(scrollView: scrollView, hostingView: hostingView)
+        scrollView.magnification = zoomScale
+        return scrollView
+    }
+
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        if let hostingView = context.coordinator.hostingView {
+            hostingView.rootView = content()
+            hostingView.layoutSubtreeIfNeeded()
+            hostingView.frame = NSRect(origin: .zero, size: hostingView.fittingSize)
+        }
+        context.coordinator.applyZoomIfNeeded(to: nsView, targetZoom: zoomScale)
+    }
+
+    final class Coordinator: NSObject {
+        private let zoomScale: Binding<CGFloat>
+        weak var scrollView: NSScrollView?
+        weak var hostingView: NSHostingView<Content>?
+        private var isApplyingFromSwiftUI = false
+
+        init(zoomScale: Binding<CGFloat>) {
+            self.zoomScale = zoomScale
+        }
+
+        deinit {
+            if let scrollView {
+                NotificationCenter.default.removeObserver(
+                    self,
+                    name: NSScrollView.didEndLiveMagnifyNotification,
+                    object: scrollView
+                )
+            }
+        }
+
+        func attach(scrollView: NSScrollView, hostingView: NSHostingView<Content>) {
+            self.scrollView = scrollView
+            self.hostingView = hostingView
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleLiveMagnify),
+                name: NSScrollView.didEndLiveMagnifyNotification,
+                object: scrollView
+            )
+        }
+
+        func applyZoomIfNeeded(to scrollView: NSScrollView, targetZoom: CGFloat) {
+            guard !isApplyingFromSwiftUI else { return }
+            let current = scrollView.magnification
+            guard abs(current - targetZoom) > 0.001 else { return }
+            let center = mouseAnchorPoint(in: scrollView) ?? centerAnchorPoint(in: scrollView)
+            isApplyingFromSwiftUI = true
+            scrollView.setMagnification(targetZoom, centeredAt: center)
+            isApplyingFromSwiftUI = false
+        }
+
+        @objc private func handleLiveMagnify() {
+            guard let scrollView else { return }
+            let newValue = scrollView.magnification
+            if abs(zoomScale.wrappedValue - newValue) > 0.001 {
+                zoomScale.wrappedValue = newValue
+            }
+        }
+
+        private func mouseAnchorPoint(in scrollView: NSScrollView) -> NSPoint? {
+            guard let window = scrollView.window,
+                  let documentView = scrollView.documentView else { return nil }
+            let screenPoint = NSEvent.mouseLocation
+            let windowPoint = window.convertPoint(fromScreen: screenPoint)
+            let contentPoint = scrollView.contentView.convert(windowPoint, from: nil)
+            let docPoint = documentView.convert(contentPoint, from: scrollView.contentView)
+            if documentView.bounds.contains(docPoint) {
+                return docPoint
+            }
+            return nil
+        }
+
+        private func centerAnchorPoint(in scrollView: NSScrollView) -> NSPoint {
+            let visible = scrollView.contentView.bounds
+            return NSPoint(x: visible.midX, y: visible.midY)
+        }
     }
 }

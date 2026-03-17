@@ -1,0 +1,176 @@
+{
+  "source": "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Annotation/Views/AnnotationToolbarView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Save as...",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 351
+        }
+      },
+      {
+        "comment": "",
+        "key": "Done",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 356
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stroke Size",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 120
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld pt",
+        "location": {
+          "startingColumn": 50,
+          "startingLine": 136
+        }
+      },
+      {
+        "comment": "",
+        "key": "Arrow Style",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 186
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld pt",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 230
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld pt",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 236
+        }
+      },
+      {
+        "comment": "",
+        "key": "A",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 255
+        }
+      },
+      {
+        "comment": "",
+        "key": "Text",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 271
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld%%",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 333
+        }
+      },
+      {
+        "comment": "",
+        "key": "Zoom Out (Command-)",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 324
+        }
+      },
+      {
+        "comment": "",
+        "key": "Fit",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 326
+        }
+      },
+      {
+        "comment": "",
+        "key": "Fit to Window (Command-0)",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 331
+        }
+      },
+      {
+        "comment": "",
+        "key": "Zoom In (Command-+)",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 346
+        }
+      },
+      {
+        "comment": "",
+        "key": "Text",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 562
+        }
+      },
+      {
+        "comment": "",
+        "key": "Text",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 594
+        }
+      },
+      {
+        "comment": "",
+        "key": "Text",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 573
+        }
+      },
+      {
+        "comment": "",
+        "key": "Text",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 577
+        }
+      },
+      {
+        "comment": "",
+        "key": "Text",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 581
+        }
+      },
+      {
+        "comment": "",
+        "key": "Text",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 585
+        }
+      },
+      {
+        "comment": "",
+        "key": "Text",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 589
+        }
+      }
+    ]
+  },
+  "version": 1
+}

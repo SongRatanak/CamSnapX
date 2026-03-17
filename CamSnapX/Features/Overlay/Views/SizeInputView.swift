@@ -132,28 +132,28 @@ struct SizeInputView: View {
             widthText = "\(width)"
             heightText = "\(height)"
         }
-        .onChange(of: width) {
+        .onChange(of: width) { newValue in
             if !isUserEditing {
-                widthText = "\(width)"
+                widthText = "\(newValue)"
             }
         }
-        .onChange(of: height) {
+        .onChange(of: height) { newValue in
             if !isUserEditing {
-                heightText = "\(height)"
+                heightText = "\(newValue)"
             }
         }
-        .onChange(of: isUserEditing) {
-            if !isUserEditing {
+        .onChange(of: isUserEditing) { newValue in
+            if !newValue {
                 widthText = "\(width)"
                 heightText = "\(height)"
                 widthFocused = false
                 heightFocused = false
             }
         }
-        .onChange(of: widthText) {
+        .onChange(of: widthText) { _ in
             if widthFocused { applyLiveSize() }
         }
-        .onChange(of: heightText) {
+        .onChange(of: heightText) { _ in
             if heightFocused { applyLiveSize() }
         }
     }

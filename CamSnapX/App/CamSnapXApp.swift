@@ -9,6 +9,10 @@ import SwiftUI
 
 @main
 struct CamSnapXApp: App {
+    init() {
+        ShortcutManager.shared.startMonitoring()
+    }
+
     var body: some Scene {
         MenuBarExtra("CamSnapX", systemImage: "viewfinder") {
             ContentView()

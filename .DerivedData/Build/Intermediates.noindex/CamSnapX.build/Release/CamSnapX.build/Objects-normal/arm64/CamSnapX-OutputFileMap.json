@@ -1,0 +1,196 @@
+{
+  "" : {
+    "const-values" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CamSnapX-primary.swiftconstvalues",
+    "dependencies" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CamSnapX-primary.d",
+    "diagnostics" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CamSnapX-primary.dia",
+    "emit-module-dependencies" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CamSnapX-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CamSnapX-primary-emit-module.dia",
+    "pch" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CamSnapX-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CamSnapX-primary.swiftdeps"
+  },
+  "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/GeneratedAssetSymbols.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/App/CamSnapXApp.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CamSnapXApp.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CamSnapXApp.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CamSnapXApp.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Components/DragPreviewView.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/DragPreviewView.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/DragPreviewView.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/DragPreviewView.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Components/MenuRowButton.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/MenuRowButton.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/MenuRowButton.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/MenuRowButton.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Components/SelectionBackground.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/SelectionBackground.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/SelectionBackground.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/SelectionBackground.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Core/Extensions/Notification+Capture.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/Notification+Capture.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/Notification+Capture.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/Notification+Capture.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Core/Models/Annotation.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/Annotation.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/Annotation.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/Annotation.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Core/Models/AnnotationState.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AnnotationState.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AnnotationState.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AnnotationState.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Core/Models/CaptureHistoryItem.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CaptureHistoryItem.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CaptureHistoryItem.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CaptureHistoryItem.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Core/Utilities/WindowCoordinateSpaceView.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/WindowCoordinateSpaceView.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/WindowCoordinateSpaceView.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/WindowCoordinateSpaceView.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Annotation/Services/AnnotationRenderer.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AnnotationRenderer.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AnnotationRenderer.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AnnotationRenderer.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Annotation/Views/AnnotationCanvasRepresentable.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AnnotationCanvasRepresentable.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AnnotationCanvasRepresentable.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AnnotationCanvasRepresentable.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Annotation/Views/AnnotationCanvasView.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AnnotationCanvasView.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AnnotationCanvasView.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AnnotationCanvasView.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Annotation/Views/AnnotationTextEditor.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AnnotationTextEditor.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AnnotationTextEditor.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AnnotationTextEditor.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Annotation/Views/AnnotationToolbarView.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AnnotationToolbarView.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AnnotationToolbarView.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AnnotationToolbarView.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Annotation/Views/ColorPickerPanelView.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ColorPickerPanelView.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ColorPickerPanelView.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ColorPickerPanelView.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Capture/Controllers/CaptureAreaController.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CaptureAreaController.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CaptureAreaController.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CaptureAreaController.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Capture/Views/CapturePreviewPanel.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CapturePreviewPanel.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CapturePreviewPanel.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CapturePreviewPanel.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/History/Controllers/CaptureHistoryPanelController.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CaptureHistoryPanelController.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CaptureHistoryPanelController.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CaptureHistoryPanelController.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/History/Services/CaptureHistoryStore.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CaptureHistoryStore.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CaptureHistoryStore.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CaptureHistoryStore.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/History/Views/CaptureHistoryPanelView.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CaptureHistoryPanelView.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CaptureHistoryPanelView.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CaptureHistoryPanelView.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/History/Views/CaptureHistoryView.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CaptureHistoryView.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CaptureHistoryView.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/CaptureHistoryView.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Overlay/Controllers/AllInOneOverlayController.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AllInOneOverlayController.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AllInOneOverlayController.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/AllInOneOverlayController.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Overlay/Controllers/ScrollingCaptureOverlayController.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ScrollingCaptureOverlayController.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ScrollingCaptureOverlayController.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ScrollingCaptureOverlayController.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Overlay/Views/OverlayContentView.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/OverlayContentView.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/OverlayContentView.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/OverlayContentView.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Overlay/Views/OverlayPanels.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/OverlayPanels.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/OverlayPanels.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/OverlayPanels.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Overlay/Views/ScreenSelectView.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ScreenSelectView.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ScreenSelectView.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ScreenSelectView.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Overlay/Views/ScrollingCaptureControlView.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ScrollingCaptureControlView.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ScrollingCaptureControlView.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ScrollingCaptureControlView.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Overlay/Views/ScrollingCaptureShelfView.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ScrollingCaptureShelfView.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ScrollingCaptureShelfView.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ScrollingCaptureShelfView.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Overlay/Views/SizeInputView.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/SizeInputView.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/SizeInputView.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/SizeInputView.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Overlay/Views/ToolbarContentView.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ToolbarContentView.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ToolbarContentView.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ToolbarContentView.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/ScrollingCapture/Services/ScrollingCaptureManager.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ScrollingCaptureManager.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ScrollingCaptureManager.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ScrollingCaptureManager.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/ScrollingCapture/Services/ScrollingCaptureSession.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ScrollingCaptureSession.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ScrollingCaptureSession.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ScrollingCaptureSession.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Viewer/Controllers/ImageViewerController.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ImageViewerController.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ImageViewerController.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ImageViewerController.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Viewer/Views/ContentView.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ContentView.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ContentView.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/ContentView.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Settings/Controllers/SettingsPanelController.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/SettingsPanelController.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/SettingsPanelController.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/SettingsPanelController.o"
+  },
+  "/Users/songratanak/Documents/CamSnapX/CamSnapX/Settings/Views/SettingsPanelView.swift" : {
+    "index-unit-output-path" : "/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/SettingsPanelView.o",
+    "llvm-bc" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/SettingsPanelView.bc",
+    "object" : "/Users/songratanak/Documents/CamSnapX/.DerivedData/Build/Intermediates.noindex/CamSnapX.build/Release/CamSnapX.build/Objects-normal/arm64/SettingsPanelView.o"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "source": "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Annotation/Views/ColorPickerPanelView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Hex",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 205
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 212
+        }
+      },
+      {
+        "comment": "",
+        "key": "Alpha",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 222
+        }
+      },
+      {
+        "comment": "",
+        "key": "Hex",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 193
+        }
+      }
+    ]
+  },
+  "version": 1
+}

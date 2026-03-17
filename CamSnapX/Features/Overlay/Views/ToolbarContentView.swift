@@ -159,13 +159,17 @@ struct ToolbarContentView: View {
     }
 }
 
-#Preview {
-    ToolbarContentView(onAction: { _ in }, model: {
-        let m = ToolbarModel()
-        m.selectionWidth = 720
-        m.selectionHeight = 220
-        return m
-    }())
-    .frame(width: 680, height: 56)
-    .background(.black)
+#if DEBUG
+struct ToolbarContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ToolbarContentView(onAction: { _ in }, model: {
+            let m = ToolbarModel()
+            m.selectionWidth = 720
+            m.selectionHeight = 220
+            return m
+        }())
+        .frame(width: 680, height: 56)
+        .background(.black)
+    }
 }
+#endif

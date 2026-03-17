@@ -1,0 +1,56 @@
+{
+  "source": "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/History/Views/CaptureHistoryPanelView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Capture History",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 48
+        }
+      },
+      {
+        "comment": "",
+        "key": "Clear History…",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 72
+        }
+      },
+      {
+        "comment": "",
+        "key": "File missing",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 168
+        }
+      },
+      {
+        "comment": "",
+        "key": "Restore",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 188
+        }
+      },
+      {
+        "comment": "",
+        "key": "No items",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 274
+        }
+      },
+      {
+        "comment": "",
+        "key": "Capture something",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 279
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -44,7 +44,14 @@ struct CapturePreviewView: View {
 
     @State private var isHovering = false
     @State private var savedFeedback = false
+    @State private var copiedFeedback = false
     @State private var isDismissing = false
+
+    private let feedbackDisplayDuration: TimeInterval = 1.2
+
+    private var isShowingOverlay: Bool {
+        isHovering || savedFeedback || copiedFeedback
+    }
 
     var body: some View {
         ZStack {
@@ -59,7 +66,7 @@ struct CapturePreviewView: View {
                     return makeDragItemProvider()
                 }
 
-            if isHovering {
+            if isShowingOverlay {
                 VisualEffectBlur(material: .hudWindow, blendingMode: .withinWindow)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .frame(width: 160, height: 120)
@@ -71,15 +78,19 @@ struct CapturePreviewView: View {
                     .allowsHitTesting(false)
 
                 VStack(spacing: 6) {
-                    Button("Copy") {
+                    Button(copiedFeedback ? "Copied!" : "Copy") {
+                        guard !copiedFeedback else { return }
                         onCopy()
-                        dismissWithAnimation()
+                        copiedFeedback = true
+                        dismissAfterFeedback()
                     }
+                    .disabled(copiedFeedback)
 
                     Button(savedFeedback ? "Saved!" : "Save") {
+                        guard !savedFeedback else { return }
                         if onSave() {
                             savedFeedback = true
-                            dismissWithAnimation()
+                            dismissAfterFeedback()
                         }
                     }
                     .disabled(savedFeedback)
@@ -98,8 +109,8 @@ struct CapturePreviewView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(Color.black.opacity(0.85))
-                    .opacity(isHovering ? 1 : 0)
-                    .allowsHitTesting(isHovering)
+                .opacity(isHovering ? 1 : 0)
+                .allowsHitTesting(isHovering)
                     Spacer()
                     Button(action: openImageViewer) {
                         Image(systemName: "pencil")
@@ -169,6 +180,12 @@ struct CapturePreviewView: View {
         })
     }
 
+    private func dismissAfterFeedback() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + feedbackDisplayDuration) {
+            dismissWithAnimation()
+        }
+    }
+
     private func makeDragItemProvider() -> NSItemProvider {
         let dragURL: URL?
 
@@ -225,13 +242,17 @@ struct CapturePreviewView: View {
     }
 }
 
-#Preview {
-    CapturePreviewView(
-        image: NSImage(),
-        fileURL: nil,
-        onClose: {},
-        onCopy: {},
-        onSave: { true },
-        windowProvider: { nil }
-    )
+#if DEBUG
+struct CapturePreviewView_Previews: PreviewProvider {
+    static var previews: some View {
+        CapturePreviewView(
+            image: NSImage(),
+            fileURL: nil,
+            onClose: {},
+            onCopy: {},
+            onSave: { true },
+            windowProvider: { nil }
+        )
+    }
 }
+#endif

@@ -62,8 +62,7 @@ final class CaptureAreaController: NSObject {
     @MainActor
     func ensureScreenCaptureAccess() -> Bool {
         if CGPreflightScreenCaptureAccess() { return true }
-        let granted = CGRequestScreenCaptureAccess()
-        if !granted && !didShowScreenCaptureAlert {
+        if !didShowScreenCaptureAlert {
             didShowScreenCaptureAlert = true
             let alert = NSAlert()
             alert.messageText = "Screen Recording Permission Needed"
@@ -71,7 +70,7 @@ final class CaptureAreaController: NSObject {
             alert.addButton(withTitle: "OK")
             alert.runModal()
         }
-        return granted
+        return false
     }
 
     func showPreview(for fileURL: URL) {
@@ -145,8 +144,14 @@ final class CaptureAreaController: NSObject {
         let captureRect = rect.intersection(unionRect)
         guard captureRect.width > 2, captureRect.height > 2 else { return nil }
         do {
-            let displayRect = displaySpaceRect(from: captureRect)
-            return try await SCScreenshotManager.captureImage(in: displayRect)
+            if #available(macOS 15.2, *) {
+                let displayRect = displaySpaceRect(from: captureRect)
+                return try await SCScreenshotManager.captureImage(in: displayRect)
+            }
+            if let image = captureWithScreencapture(rect: captureRect) {
+                return cgImage(from: image)
+            }
+            return nil
         } catch {
             if let image = captureWithScreencapture(rect: captureRect) {
                 return cgImage(from: image)
@@ -178,6 +183,7 @@ final class CaptureAreaController: NSObject {
 
     @MainActor
     private func captureWithScreenCaptureKit(rect: CGRect) async -> NSImage? {
+        guard #available(macOS 15.2, *) else { return nil }
         do {
             let displayRect = displaySpaceRect(from: rect)
             let cgImage = try await SCScreenshotManager.captureImage(in: displayRect)

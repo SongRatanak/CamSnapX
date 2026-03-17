@@ -1,0 +1,40 @@
+{
+  "source": "/Users/songratanak/Documents/CamSnapX/CamSnapX/Features/Overlay/Views/SizeInputView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "×",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 41
+        }
+      },
+      {
+        "comment": "",
+        "key": "W",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 27
+        }
+      },
+      {
+        "comment": "",
+        "key": "H",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 45
+        }
+      },
+      {
+        "comment": "",
+        "key": "Freeform",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 77
+        }
+      }
+    ]
+  },
+  "version": 1
+}

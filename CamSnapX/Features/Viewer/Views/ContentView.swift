@@ -93,8 +93,8 @@ struct ContentView: View {
         .onExitCommand {
             dismiss()
         }
-        .onChange(of: controlActiveState) {
-            if controlActiveState == .inactive {
+        .onChange(of: controlActiveState) { newValue in
+            if newValue == .inactive {
                 dismiss()
             }
         }
@@ -148,8 +148,12 @@ struct ContentView: View {
     }
 }
 
-#Preview {
-    ContentView()
-        .frame(width: 300, height: 600)
-        .padding()
+#if DEBUG
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+            .frame(width: 300, height: 600)
+            .padding()
+    }
 }
+#endif

@@ -74,8 +74,12 @@ struct ScrollingCaptureShelfView: View {
     }
 }
 
-#Preview {
-    ScrollingCaptureShelfView(model: ScrollingCaptureViewModel(), onStart: {})
-        .frame(width: 320)
-        .background(.black)
+#if DEBUG
+struct ScrollingCaptureShelfView_Previews: PreviewProvider {
+    static var previews: some View {
+        ScrollingCaptureShelfView(model: ScrollingCaptureViewModel(), onStart: {})
+            .frame(width: 320)
+            .background(.black)
+    }
 }
+#endif
