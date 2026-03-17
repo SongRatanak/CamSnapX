@@ -11,10 +11,6 @@ struct AnnotationToolbarView: View {
     @ObservedObject var state: AnnotationState
     let onSaveAs: () -> Void
     let onDone: () -> Void
-    let zoomScale: CGFloat
-    let onZoomOut: () -> Void
-    let onZoomToFit: () -> Void
-    let onZoomIn: () -> Void
 
     @State private var showColorPicker = false
     @State private var showTextStylePicker = false
@@ -220,8 +216,8 @@ struct AnnotationToolbarView: View {
                         }
                     }
 
-                    // Text-specific controls (visible when text tool selected)
-                    if state.selectedTool == .text {
+                    // Text-specific controls (visible when text tool selected or text annotation selected)
+                    if isTextContext {
                         groupDivider()
 
                         // Font size picker
@@ -311,42 +307,6 @@ struct AnnotationToolbarView: View {
 
             Spacer(minLength: 0)
 
-            HStack(spacing: 4) {
-                Button {
-                    onZoomOut()
-                } label: {
-                    Image(systemName: "minus.magnifyingglass")
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(width: 26, height: 26)
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut("-", modifiers: [.command])
-                .help("Zoom Out (Command-)")
-
-                Button("Fit") {
-                    onZoomToFit()
-                }
-                .buttonStyle(.bordered)
-                .keyboardShortcut("0", modifiers: [.command])
-                .help("Fit to Window (Command-0)")
-
-                Text("\(Int((zoomScale * 100).rounded()))%")
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(minWidth: 44)
-
-                Button {
-                    onZoomIn()
-                } label: {
-                    Image(systemName: "plus.magnifyingglass")
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(width: 26, height: 26)
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut("+", modifiers: [.command])
-                .help("Zoom In (Command-+)")
-            }
-            .padding(.trailing, 6)
-
             // Save/Done buttons
             Button("Save as...") {
                 onSaveAs()
@@ -363,6 +323,17 @@ struct AnnotationToolbarView: View {
     }
 
     // MARK: - Components
+
+    private var isTextContext: Bool {
+        if state.selectedTool == .text {
+            return true
+        }
+        if let selectedID = state.selectedAnnotationID,
+           let selected = state.annotations.first(where: { $0.id == selectedID }) {
+            return selected.tool == .text
+        }
+        return false
+    }
 
     private func toolGroup<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         HStack(spacing: 1) {

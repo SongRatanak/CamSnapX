@@ -116,8 +116,6 @@ struct AnnotationTextEditor: View {
     private let squareSize: CGFloat = 10
     private let minBoxWidth: CGFloat = 40
     private let minBoxHeight: CGFloat = 20
-    private let emojiHeight: CGFloat = 26
-    private let emojiSpacing: CGFloat = 4
     private let textInsetX: CGFloat = 4
     private let textInsetY: CGFloat = 4
 
@@ -147,10 +145,22 @@ struct AnnotationTextEditor: View {
         return CGSize(width: ceil(rect.width), height: ceil(rect.height))
     }
 
+    private var measuredTextSizeUnwrapped: CGSize {
+        let font = textStyle.font(ofSize: fontSize)
+        let displayText = text.isEmpty ? "Type here..." : text
+        let attrs: [NSAttributedString.Key: Any] = [.font: font]
+        let rect = (displayText as NSString).boundingRect(
+            with: CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: attrs
+        )
+        return CGSize(width: ceil(rect.width), height: ceil(rect.height))
+    }
+
     /// The effective box width: either user-set boxWidth, or text width + padding, with a minimum
     private var effectiveBoxWidth: CGFloat {
         if let bw = boxWidth {
-            return max(bw, minBoxWidth)
+            return max(bw, measuredTextSizeUnwrapped.width + textInsetX * 2, minBoxWidth)
         }
         return max(measuredTextSize.width + textInsetX * 2, minBoxWidth)
     }
@@ -161,30 +171,12 @@ struct AnnotationTextEditor: View {
     }
 
     var body: some View {
-        let emojiSection = emojiHeight + emojiSpacing
-        let totalHeight = emojiSection + boxHeight
+        let totalHeight = boxHeight
         let offsetX = position.x + effectiveBoxWidth / 2
-        let offsetY = position.y + totalHeight / 2 - emojiSection
+        let offsetY = position.y + totalHeight / 2
 
         ZStack {
-            VStack(spacing: emojiSpacing) {
-                // Emoji button
-                Button {
-                    DispatchQueue.main.async {
-                        NSApp.orderFrontCharacterPalette(nil)
-                    }
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(Color.accentColor)
-                            .frame(width: emojiHeight, height: emojiHeight)
-                        Image(systemName: "face.smiling.inverse")
-                            .font(.system(size: 14))
-                            .foregroundStyle(.white)
-                    }
-                }
-                .buttonStyle(.plain)
-
+            VStack(spacing: 0) {
                 // Text box with dashed border + handles
                 ZStack {
                     // Dashed border (also drag-to-move area)

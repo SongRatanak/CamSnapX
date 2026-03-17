@@ -118,7 +118,6 @@ final class ImageViewerController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         window = nil
-        NSApp.setActivationPolicy(.accessory)
         ImageViewerController.activeViewers.removeAll { $0 === self }
     }
 
@@ -359,21 +358,17 @@ struct ImageViewerView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Annotation toolbar
-            AnnotationToolbarView(
-                state: annotationState,
-                onSaveAs: {
-                    let rendered = AnnotationRenderer.render(
-                        annotations: annotationState.annotations,
-                        onto: imageState.image
-                    )
-                    onSaveAs(rendered)
-                },
-                onDone: handleDone,
-                zoomScale: zoomScale,
-                onZoomOut: zoomOut,
-                onZoomToFit: zoomToFit,
-                onZoomIn: zoomIn
-            )
+        AnnotationToolbarView(
+            state: annotationState,
+            onSaveAs: {
+                let rendered = AnnotationRenderer.render(
+                    annotations: annotationState.annotations,
+                    onto: imageState.image
+                )
+                onSaveAs(rendered)
+            },
+            onDone: handleDone
+        )
 
             Divider()
 
@@ -455,6 +450,10 @@ struct ImageViewerView: View {
                 }
                 .frame(width: imageState.image.size.width, height: imageState.image.size.height)
             }
+            .overlay(alignment: .bottom) {
+                zoomControlBar
+                    .padding(.bottom, 12)
+            }
             .background(
                 GeometryReader { proxy in
                     Color.clear
@@ -478,6 +477,9 @@ struct ImageViewerView: View {
                 commitTextAnnotation()
             }
         }
+        .overlay {
+            zoomShortcutHost
+        }
         .onChange(of: annotationState.selectedAnnotationID) { _ in
             guard let selectedID = annotationState.selectedAnnotationID,
                   let idx = annotationState.annotations.firstIndex(where: { $0.id == selectedID }) else { return }
@@ -500,10 +502,16 @@ struct ImageViewerView: View {
             annotationState.fontSize = imageFontSize
         }
         .onChange(of: annotationState.fontSize) { newValue in
-            guard isEditingText else { return }
-            let viewFontSize = imageToViewScale > 0 ? newValue * imageToViewScale : newValue
-            if abs(textEditFontSize - viewFontSize) > 0.5 {
-                textEditFontSize = viewFontSize
+            if isEditingText {
+                let viewFontSize = imageToViewScale > 0 ? newValue * imageToViewScale : newValue
+                if abs(textEditFontSize - viewFontSize) > 0.5 {
+                    textEditFontSize = viewFontSize
+                }
+            } else if let selectedID = annotationState.selectedAnnotationID,
+                      let idx = annotationState.annotations.firstIndex(where: { $0.id == selectedID }),
+                      annotationState.annotations[idx].tool == .text {
+                annotationState.annotations[idx].fontSize = newValue
+                annotationState.onStateChanged?()
             }
         }
         .onChange(of: annotationState.textStyle) { newValue in
@@ -594,6 +602,121 @@ struct ImageViewerView: View {
         let scaleX = viewportSize.width / imageSize.width
         let scaleY = viewportSize.height / imageSize.height
         return min(scaleX, scaleY)
+    }
+
+    private var zoomControlBar: some View {
+        HStack(spacing: 10) {
+            zoomMenu
+
+            Spacer(minLength: 0)
+
+            dragPill
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 8) {
+                roundActionButton(systemImage: "square.and.arrow.up") { }
+                roundActionButton(systemImage: "pin") { }
+                roundActionButton(systemImage: "doc.on.doc") { }
+                roundActionButton(systemImage: "icloud.and.arrow.up") { }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color.black.opacity(0.28))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                )
+        )
+        .padding(.horizontal, 16)
+    }
+
+    private var zoomMenu: some View {
+        Menu {
+            Button("Zoom In") { zoomIn() }
+            Button("Zoom Out") { zoomOut() }
+            Divider()
+            Button("Fit Canvas") { zoomToFit() }
+            Divider()
+            ForEach([50, 100, 200], id: \.self) { value in
+                Button("\(value)%") {
+                    zoomScale = clampZoom(CGFloat(value) / 100)
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text("\(Int((zoomScale * 100).rounded()))%")
+                    .font(.system(size: 13, weight: .semibold))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Zoom")
+    }
+
+    private var zoomShortcutHost: some View {
+        VStack {
+            Button("") { zoomIn() }
+                .keyboardShortcut("=", modifiers: [.command])
+                .opacity(0)
+                .frame(width: 0, height: 0)
+            Button("") { zoomOut() }
+                .keyboardShortcut("-", modifiers: [.command])
+                .opacity(0)
+                .frame(width: 0, height: 0)
+            Button("") { zoomToFit() }
+                .keyboardShortcut("1", modifiers: [.command])
+                .opacity(0)
+                .frame(width: 0, height: 0)
+            Button("") { zoomScale = clampZoom(1.0) }
+                .keyboardShortcut("0", modifiers: [.command])
+                .opacity(0)
+                .frame(width: 0, height: 0)
+        }
+    }
+
+    private var dragPill: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text("Drag Me")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.primary)
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color.white.opacity(0.08))
+        )
+    }
+
+    private func roundActionButton(systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: 26, height: 26)
+                .background(
+                    Circle()
+                        .fill(Color.white.opacity(0.08))
+                )
+        }
+        .buttonStyle(.plain)
     }
 
 
@@ -690,14 +813,19 @@ private struct ZoomableScrollView<Content: View>: NSViewRepresentable {
         scrollView.minMagnification = 0.25
         scrollView.maxMagnification = 4.0
 
-        let hostingView = NSHostingView(rootView: content())
-        hostingView.layoutSubtreeIfNeeded()
-        hostingView.frame = NSRect(origin: .zero, size: hostingView.fittingSize)
-        scrollView.documentView = hostingView
+        let clipView = CenteringClipView()
+        clipView.copiesOnScroll = false
+        scrollView.contentView = clipView
 
-        context.coordinator.attach(scrollView: scrollView, hostingView: hostingView)
+        let containerView = NSView()
+        let hostingView = NSHostingView(rootView: content())
+        hostingView.translatesAutoresizingMaskIntoConstraints = true
+        containerView.addSubview(hostingView)
+        scrollView.documentView = containerView
+
+        context.coordinator.attach(scrollView: scrollView, containerView: containerView, hostingView: hostingView)
         scrollView.magnification = zoomScale
-        context.coordinator.centerDocumentIfNeeded(in: scrollView)
+        context.coordinator.layoutContent(in: scrollView)
         return scrollView
     }
 
@@ -705,17 +833,18 @@ private struct ZoomableScrollView<Content: View>: NSViewRepresentable {
         if let hostingView = context.coordinator.hostingView {
             hostingView.rootView = content()
             hostingView.layoutSubtreeIfNeeded()
-            hostingView.frame = NSRect(origin: .zero, size: hostingView.fittingSize)
         }
         context.coordinator.applyZoomIfNeeded(to: nsView, targetZoom: zoomScale)
-        context.coordinator.centerDocumentIfNeeded(in: nsView)
+        context.coordinator.layoutContent(in: nsView)
     }
 
     final class Coordinator: NSObject {
         private let zoomScale: Binding<CGFloat>
         weak var scrollView: NSScrollView?
+        weak var containerView: NSView?
         weak var hostingView: NSHostingView<Content>?
         private var isApplyingFromSwiftUI = false
+        private var lastContentSize: CGSize = .zero
 
         init(zoomScale: Binding<CGFloat>) {
             self.zoomScale = zoomScale
@@ -731,8 +860,9 @@ private struct ZoomableScrollView<Content: View>: NSViewRepresentable {
             }
         }
 
-        func attach(scrollView: NSScrollView, hostingView: NSHostingView<Content>) {
+        func attach(scrollView: NSScrollView, containerView: NSView, hostingView: NSHostingView<Content>) {
             self.scrollView = scrollView
+            self.containerView = containerView
             self.hostingView = hostingView
             NotificationCenter.default.addObserver(
                 self,
@@ -752,17 +882,15 @@ private struct ZoomableScrollView<Content: View>: NSViewRepresentable {
             isApplyingFromSwiftUI = false
         }
 
-        func centerDocumentIfNeeded(in scrollView: NSScrollView) {
-            guard let documentView = scrollView.documentView else { return }
-            let clipSize = scrollView.contentView.bounds.size
-            var frame = documentView.frame
-            let centeredX = max(0, (clipSize.width - frame.size.width) / 2)
-            let centeredY = max(0, (clipSize.height - frame.size.height) / 2)
-            let newOrigin = NSPoint(x: centeredX, y: centeredY)
-            if frame.origin != newOrigin {
-                frame.origin = newOrigin
-                documentView.frame = frame
+        func layoutContent(in scrollView: NSScrollView) {
+            guard let containerView, let hostingView else { return }
+            let contentSize = hostingView.fittingSize
+            if contentSize == lastContentSize {
+                return
             }
+            lastContentSize = contentSize
+            containerView.frame = NSRect(origin: .zero, size: contentSize)
+            hostingView.frame = NSRect(origin: .zero, size: contentSize)
         }
 
         @objc private func handleLiveMagnify() {

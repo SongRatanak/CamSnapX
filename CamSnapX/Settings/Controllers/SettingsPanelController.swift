@@ -61,8 +61,6 @@ final class SettingsPanelController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         window = nil
         removeEscMonitor()
-        // Hide from Dock again
-        NSApp.setActivationPolicy(.accessory)
     }
 
     func windowWillMiniaturize(_ notification: Notification) {

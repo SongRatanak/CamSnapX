@@ -292,6 +292,23 @@ final class AnnotationCanvasView: NSView {
                 ctx.setLineWidth(2)
                 ctx.strokeEllipse(in: circleRect)
             }
+        } else if annotation.tool == .line, annotation.points.count >= 2 {
+            let start = imagePointToViewPoint(annotation.points[0])
+            let end = imagePointToViewPoint(annotation.points[1])
+            let points = [start, end]
+            for pt in points {
+                let circleRect = CGRect(
+                    x: pt.x - handleRadius,
+                    y: pt.y - handleRadius,
+                    width: handleRadius * 2,
+                    height: handleRadius * 2
+                )
+                ctx.setFillColor(NSColor.white.cgColor)
+                ctx.fillEllipse(in: circleRect)
+                ctx.setStrokeColor(NSColor.systemBlue.cgColor)
+                ctx.setLineWidth(2)
+                ctx.strokeEllipse(in: circleRect)
+            }
         } else {
             // Other annotations: dashed outline + circle corner handles
             ctx.setStrokeColor(NSColor.systemBlue.cgColor)
@@ -663,15 +680,12 @@ final class AnnotationCanvasView: NSView {
             return
         }
 
-        // Text tool: click on existing text → drag it; click empty → new text
+        // Text tool: click on existing text → edit; click empty → new text
         if annotationState.selectedTool == .text {
             for annotation in annotationState.annotations.reversed() {
                 if annotation.tool == .text && annotation.hitBounds.contains(imagePoint) {
-                    annotationState.selectedAnnotationID = annotation.id
-                    isDraggingSelection = true
-                    lastDragImagePoint = imagePoint
-                    NSCursor.closedHand.set()
-                    needsDisplay = true
+                    let vp = imagePointToViewPoint(annotation.boundingRect.origin)
+                    onRequestEditTextAnnotation?(annotation.id, annotation.text, vp, imageToViewScale)
                     return
                 }
             }
@@ -711,7 +725,7 @@ final class AnnotationCanvasView: NSView {
 
         // Dragging/resizing a selected annotation
         if isDraggingSelection || isResizingSelection {
-            handleCursorMouseDragged(imagePoint: imagePoint)
+            handleCursorMouseDragged(imagePoint: imagePoint, isShiftDown: isShiftDown)
             return
         }
 
@@ -863,6 +877,17 @@ final class AnnotationCanvasView: NSView {
         return CGRect(x: x, y: y, width: abs(w), height: abs(h))
     }
 
+    private func constrainedRectWithAnchor(anchor: CGPoint, point: CGPoint) -> CGRect {
+        let dx = point.x - anchor.x
+        let dy = point.y - anchor.y
+        let size = max(abs(dx), abs(dy))
+        let w = size * (dx >= 0 ? 1 : -1)
+        let h = size * (dy >= 0 ? 1 : -1)
+        let x = w >= 0 ? anchor.x : anchor.x + w
+        let y = h >= 0 ? anchor.y : anchor.y + h
+        return CGRect(x: x, y: y, width: abs(w), height: abs(h))
+    }
+
     private func shouldCommitAnnotation(_ annotation: Annotation) -> Bool {
         switch annotation.tool {
         case .arrow, .line:
@@ -932,7 +957,7 @@ final class AnnotationCanvasView: NSView {
         needsDisplay = true
     }
 
-    private func handleCursorMouseDragged(imagePoint: CGPoint) {
+    private func handleCursorMouseDragged(imagePoint: CGPoint, isShiftDown: Bool) {
         guard let selectedID = annotationState.selectedAnnotationID,
               let idx = annotationState.annotations.firstIndex(where: { $0.id == selectedID }) else { return }
 
@@ -986,7 +1011,7 @@ final class AnnotationCanvasView: NSView {
                     annotationState.fontSize = newFontSize
                     annotationState.onStateChanged?()
                 }
-            } else if annotationState.annotations[idx].tool == .arrow,
+            } else if (annotationState.annotations[idx].tool == .arrow || annotationState.annotations[idx].tool == .line),
                       (resizeHandle == .arrowStart || resizeHandle == .arrowEnd || resizeHandle == .arrowMid) {
                 if annotationState.annotations[idx].points.count >= 2 {
                     if resizeHandle == .arrowStart {
@@ -994,7 +1019,9 @@ final class AnnotationCanvasView: NSView {
                     } else if resizeHandle == .arrowEnd {
                         annotationState.annotations[idx].points[1] = imagePoint
                     } else {
-                        annotationState.annotations[idx].curveControlPoint = imagePoint
+                        if annotationState.annotations[idx].tool == .arrow {
+                            annotationState.annotations[idx].curveControlPoint = imagePoint
+                        }
                     }
                     lastDragImagePoint = imagePoint
                     annotationState.onStateChanged?()
@@ -1002,12 +1029,18 @@ final class AnnotationCanvasView: NSView {
             } else {
                 // Freeform resize: dragged corner moves to mouse, opposite corner stays anchored
                 let anchor = resizeAnchorPoint
-                let newRect = CGRect(
-                    x: min(anchor.x, imagePoint.x),
-                    y: min(anchor.y, imagePoint.y),
-                    width: abs(imagePoint.x - anchor.x),
-                    height: abs(imagePoint.y - anchor.y)
-                )
+                let shouldConstrain = isShiftDown
+                    && (annotationState.annotations[idx].tool == .rectangle
+                        || annotationState.annotations[idx].tool == .filledRectangle
+                        || annotationState.annotations[idx].tool == .circle)
+                let newRect = shouldConstrain
+                    ? constrainedRectWithAnchor(anchor: anchor, point: imagePoint)
+                    : CGRect(
+                        x: min(anchor.x, imagePoint.x),
+                        y: min(anchor.y, imagePoint.y),
+                        width: abs(imagePoint.x - anchor.x),
+                        height: abs(imagePoint.y - anchor.y)
+                    )
                 annotationState.annotations[idx].resizeToRect(newRect)
                 lastDragImagePoint = imagePoint
                 annotationState.onStateChanged?()
@@ -1036,10 +1069,10 @@ final class AnnotationCanvasView: NSView {
                 (CGPoint(x: viewRect.maxX, y: viewRect.midY), .midRight),
                 (CGPoint(x: viewRect.maxX, y: viewRect.maxY), .bottomRight)
             ]
-        } else if annotation.tool == .arrow, annotation.points.count >= 2 {
+        } else if (annotation.tool == .arrow || annotation.tool == .line), annotation.points.count >= 2 {
             let start = imagePointToViewPoint(annotation.points[0])
             let end = imagePointToViewPoint(annotation.points[1])
-            if annotation.arrowStyle == .curved || annotation.arrowStyle == .double {
+            if annotation.tool == .arrow, annotation.arrowStyle == .curved || annotation.arrowStyle == .double {
                 let control = annotation.arrowStyle == .double
                     ? (annotation.curveControlPoint ?? CGPoint(x: (annotation.points[0].x + annotation.points[1].x) / 2,
                                                              y: (annotation.points[0].y + annotation.points[1].y) / 2))

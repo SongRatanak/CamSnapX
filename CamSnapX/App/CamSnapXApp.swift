@@ -11,7 +11,7 @@ final class CamSnapXAppDelegate: NSObject, NSApplicationDelegate {
     private var statusBarController: StatusBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        NSApp.setActivationPolicy(.regular)
         ShortcutManager.shared.startMonitoring()
         statusBarController = StatusBarController()
     }
