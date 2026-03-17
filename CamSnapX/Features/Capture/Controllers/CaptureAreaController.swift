@@ -23,6 +23,7 @@ final class CaptureAreaController: NSObject {
     private let previewSize = NSSize(width: 172, height: 132)
     private let previewPadding: CGFloat = 12
     private let previewSpacing: CGFloat = 8
+    private var didShowScreenCaptureAlert = false
 
     var hasPreviousArea: Bool {
         lastCapturedRect != nil
@@ -49,6 +50,21 @@ final class CaptureAreaController: NSObject {
     func captureWindow() {
         lastUserScreen = screenForPoint(NSEvent.mouseLocation)
         startSystemCapture(arguments: ["-i", "-w", "-c"])
+    }
+
+    @MainActor
+    func ensureScreenCaptureAccess() -> Bool {
+        if CGPreflightScreenCaptureAccess() { return true }
+        let granted = CGRequestScreenCaptureAccess()
+        if !granted && !didShowScreenCaptureAlert {
+            didShowScreenCaptureAlert = true
+            let alert = NSAlert()
+            alert.messageText = "Screen Recording Permission Needed"
+            alert.informativeText = "Enable CamSnapX in System Settings > Privacy & Security > Screen Recording, then relaunch the app."
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
+        return granted
     }
 
     func showPreview(for fileURL: URL) {
@@ -119,6 +135,9 @@ final class CaptureAreaController: NSObject {
             let displayRect = displaySpaceRect(from: captureRect)
             return try await SCScreenshotManager.captureImage(in: displayRect)
         } catch {
+            if let image = captureWithScreencapture(rect: captureRect) {
+                return cgImage(from: image)
+            }
             return nil
         }
     }
@@ -254,10 +273,10 @@ final class CaptureAreaController: NSObject {
     }
 
     private func saveImageToDesktop(image: NSImage, fileURL: URL?) -> URL? {
-        if let fileURL, FileManager.default.fileExists(atPath: fileURL.path) {
-            return overwriteImage(image, at: fileURL)
-        }
         let destinationURL = nextDesktopScreenshotURL()
+        if let fileURL, FileManager.default.fileExists(atPath: fileURL.path) {
+            return saveImage(image: image, fileURL: fileURL, to: destinationURL)
+        }
         return saveImage(image: image, fileURL: nil, to: destinationURL)
     }
 
@@ -591,6 +610,10 @@ final class CaptureAreaController: NSObject {
                 }
             }
         }
+    }
+
+    private func cgImage(from image: NSImage) -> CGImage? {
+        image.cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
 
 }

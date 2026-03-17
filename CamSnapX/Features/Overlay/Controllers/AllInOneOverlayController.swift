@@ -8,7 +8,7 @@
 import AppKit
 import SwiftUI
 
-final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
+final class AllInOneOverlayController: NSObject, ScrollingCaptureSessionHost {
     static let shared = AllInOneOverlayController()
 
     private var overlayPanels: [NSPanel] = []
@@ -18,26 +18,16 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
     private var escMonitor: Any?
     private var scrollingPanel: NSPanel?
     private var scrollingControlPanel: NSPanel?
-    private var selectionBorderPanel: NSPanel?
     private let scrollingViewModel = ScrollingCaptureViewModel()
     private var currentSelectionRect: CGRect = .zero
     private var currentScreen: NSScreen?
     private var savedSelection: CGRect?  // persists across overlay sessions
-    private let scrollingCaptureManager = ScrollingCaptureManager()
     private let scrollingControlModel = ScrollingCaptureControlModel()
-    private var scrollingGlobalMonitor: Any?
-    private var scrollingLocalMonitor: Any?
-    private var scrollingDeltaAccumulator: CGFloat = 0
-    private var scrollingCaptureThreshold: CGFloat = 140
-    private var scrollingDirection: CGFloat = 0
-    private var lastCaptureTime: CFTimeInterval = 0
-    private let minCaptureInterval: CFTimeInterval = 0.25  // capture at most every 250ms
-    private let scrollRenderDelay: CFTimeInterval = 0.26
-    private var scrollCaptureWorkItem: DispatchWorkItem?
+    private let scrollSession = ScrollingCaptureSession()
 
     private override init() {
         super.init()
-        scrollingCaptureManager.delegate = self
+        scrollSession.host = self
     }
 
     func show() {
@@ -83,10 +73,8 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
         }
         toolbarPanel?.orderOut(nil)
         toolbarPanel = nil
-        hideSelectionBorder()
         hideScrollingCaptureShelf()
-        hideScrollingCaptureControls()
-        stopScrollMonitor()
+        scrollSession.tearDown()
         activeOverlayView?.showsSelectionOverlay = true
         for panel in overlayPanels {
             panel.ignoresMouseEvents = false
@@ -249,7 +237,9 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
                     case .area: self?.captureCurrentArea()
                     case .fullscreen: self?.activeOverlayView?.onCaptureFullscreen?()
                     case .window: self?.activeOverlayView?.onCaptureWindow?()
-                    case .scrolling: self?.scrollingCaptureManager.startScrollingCapture()
+                    case .scrolling:
+                        guard CaptureAreaController.shared.ensureScreenCaptureAccess() else { return }
+                        self?.scrollSession.startCapture()
                     case .timer: break
                     case .ocr: self?.captureCurrentAreaOCR()
                     case .recording: break
@@ -401,7 +391,8 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         let shelfView = ScrollingCaptureShelfView(model: scrollingViewModel) { [weak self] in
-            self?.scrollingCaptureManager.startScrollingCapture()
+            guard CaptureAreaController.shared.ensureScreenCaptureAccess() else { return }
+            self?.scrollSession.startCapture()
         }
         panel.contentView = NSHostingView(rootView: shelfView)
         scrollingPanel = panel
@@ -503,10 +494,10 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
 
         let controlView = ScrollingCaptureControlView(
             onCancel: { [weak self] in
-                self?.scrollingCaptureManager.endScrollingCapture(shouldCapture: false)
+                self?.scrollSession.cancelCapture()
             },
             onDone: { [weak self] in
-                self?.scrollingCaptureManager.endScrollingCapture(shouldCapture: true)
+                self?.scrollSession.finishCapture()
             },
             showProgress: true,
             model: scrollingControlModel
@@ -523,184 +514,59 @@ final class AllInOneOverlayController: NSObject, ScrollingCaptureDelegate {
         scrollingControlPanel = nil
     }
 
-    // MARK: - Selection Border (visible during scrolling capture)
-
-    private func showSelectionBorder() {
-        guard let screen = currentScreen ?? NSScreen.main else { return }
-        hideSelectionBorder()
-
-        let selRect = screenRect(from: currentSelectionRect, screenFrame: screen.frame)
-
-        let panel = NonKeyPanel(
-            contentRect: selRect,
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        panel.isFloatingPanel = true
-        panel.level = .floating
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = false
-        panel.hidesOnDeactivate = false
-        panel.ignoresMouseEvents = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        panel.sharingType = .none
-
-        let borderView = SelectionBorderView(frame: NSRect(origin: .zero, size: selRect.size))
-        panel.contentView = borderView
-        selectionBorderPanel = panel
-        panel.orderFrontRegardless()
-    }
-
-    private func hideSelectionBorder() {
-        selectionBorderPanel?.orderOut(nil)
-        selectionBorderPanel = nil
-    }
 }
 
-// MARK: - Scroll Event Handling for Scrolling Capture
-
-private extension AllInOneOverlayController {
-    func updateScrollThresholdForSelection() {
-        let height = max(0, currentSelectionRect.height)
-        let dynamic = height * 0.24
-        let clamped = max(120, min(260, dynamic))
-        scrollingCaptureThreshold = clamped
-    }
-
-    func startScrollMonitor() {
-        stopScrollMonitor()
-        updateScrollThresholdForSelection()
-        // Global monitor: catches scroll events going to other apps
-        scrollingGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-            self?.handleScrollEvent(event)
-        }
-        // Local monitor: catches scroll events going to our own panels (toolbar, controls)
-        scrollingLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-            self?.handleScrollEvent(event)
-            return event
-        }
-    }
-
-    func stopScrollMonitor() {
-        if let scrollingGlobalMonitor {
-            NSEvent.removeMonitor(scrollingGlobalMonitor)
-        }
-        scrollingGlobalMonitor = nil
-        if let scrollingLocalMonitor {
-            NSEvent.removeMonitor(scrollingLocalMonitor)
-        }
-        scrollingLocalMonitor = nil
-        scrollCaptureWorkItem?.cancel()
-        scrollCaptureWorkItem = nil
-    }
-
-    func handleScrollEvent(_ event: NSEvent) {
-        guard scrollingCaptureManager.isScrollingCaptureActive else { return }
-        let rawDelta = event.scrollingDeltaY
-        if rawDelta == 0 { return }
-        let direction = rawDelta > 0 ? 1.0 : -1.0
-        if scrollingDirection == 0 {
-            scrollingDirection = direction
-        } else if scrollingDirection != direction {
-            scrollingDirection = direction
-            scrollingDeltaAccumulator = 0
-        }
-
-        let delta = abs(rawDelta)
-        scrollingDeltaAccumulator += delta
-        if scrollingDeltaAccumulator >= scrollingCaptureThreshold {
-            scrollingDeltaAccumulator = 0
-
-            // Throttle: capture at most once per minCaptureInterval
-            let now = CACurrentMediaTime()
-            if now - lastCaptureTime >= minCaptureInterval {
-                lastCaptureTime = now
-
-                // Cancel any pending capture and schedule a new one after render delay
-                scrollCaptureWorkItem?.cancel()
-                let workItem = DispatchWorkItem { [weak self] in
-                    self?.scrollingCaptureManager.userDidScroll()
-                }
-                scrollCaptureWorkItem = workItem
-                DispatchQueue.main.asyncAfter(deadline: .now() + scrollRenderDelay, execute: workItem)
-            }
-        }
-    }
-
-    func captureScrollingFrame() {
-        guard scrollingCaptureManager.isScrollingCaptureActive else { return }
-        guard let overlayView = activeOverlayView else { return }
-
-        let selection = overlayView.selection
-        guard selection.width > 2, selection.height > 2 else { return }
-
-        let screenRect = screenRect(from: selection, screenFrame: overlayView.screenFrame)
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            if let cgImage = await CaptureAreaController.shared.capturePreviewCGImage(rect: screenRect) {
-                self.scrollingCaptureManager.appendScrollingFrame(cgImage)
-            }
-        }
-    }
-}
-
-// MARK: - ScrollingCaptureDelegate
+// MARK: - ScrollingCaptureSessionHost
 
 extension AllInOneOverlayController {
-    func closeOverlay() {
+    var sessionSelectionRect: CGRect { currentSelectionRect }
+    var sessionScreen: NSScreen? { currentScreen }
+    var sessionOverlayPanels: [NSPanel] { overlayPanels }
+
+    func sessionRequestClose() {
         close()
     }
 
-    func showPreviewForImage(_ image: NSImage) {
+    func sessionDidProduceImage(_ image: NSImage) {
         close()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             CaptureAreaController.shared.showPreviewForImage(image)
         }
     }
 
-    func setSelectionOverlayVisible(_ visible: Bool) {
+    func sessionShowScrollingControls() {
+        showScrollingCaptureControls()
+    }
+
+    func sessionHideScrollingControls() {
+        hideScrollingCaptureControls()
+    }
+
+    func sessionHideExtraPanels() {
+        toolbarPanel?.orderOut(nil)
+        scrollingPanel?.orderOut(nil)
+    }
+
+    func sessionRestoreExtraPanels() {
+        toolbarPanel?.orderFrontRegardless()
+    }
+
+    func sessionShowScrollingShelf() {
+        showScrollingCaptureShelf()
+    }
+
+    func sessionHideScrollingShelf() {
+        hideScrollingCaptureShelf()
+    }
+
+    func sessionSetSelectionOverlayVisible(_ visible: Bool) {
         activeOverlayView?.showsSelectionOverlay = visible
         if visible {
             activeOverlayView?.needsDisplay = true
         }
     }
 
-    func setPanelsIgnoreMouseEvents(_ ignore: Bool) {
-        if ignore {
-            // Make overlay panels fully transparent & pass-through during scroll capture
-            for panel in overlayPanels {
-                panel.ignoresMouseEvents = true
-                panel.alphaValue = 0
-            }
-            // Hide toolbar and shelf — only show the Done/Cancel control
-            toolbarPanel?.orderOut(nil)
-            scrollingPanel?.orderOut(nil)
-
-            // Show a visible border around the capture area
-            showSelectionBorder()
-
-            scrollingDeltaAccumulator = 0
-            scrollingDirection = 0
-            lastCaptureTime = 0
-            startScrollMonitor()
-        } else {
-            stopScrollMonitor()
-            hideSelectionBorder()
-            for panel in overlayPanels {
-                panel.ignoresMouseEvents = false
-                panel.alphaValue = 1
-            }
-            toolbarPanel?.orderFrontRegardless()
-        }
-    }
-
-    func captureScrollFrame() {
-        captureScrollingFrame()
-    }
-
-    func didDetectScrollTooFast() {
+    func sessionDidDetectScrollTooFast() {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.scrollingControlModel.scrollTooFast = true
@@ -710,8 +576,7 @@ extension AllInOneOverlayController {
         }
     }
 
-    func didUpdateStitchedPreview(_ image: CGImage, totalHeight: Int) {
-        // Live preview only while active scrolling capture (not in pre-capture shelf).
+    func sessionDidUpdateStitchedPreview(_ image: CGImage, totalHeight: Int) {
         let maxPreviewHeight = 300
         let scale = min(1.0, CGFloat(maxPreviewHeight) / CGFloat(image.height))
         let tw = max(1, Int(CGFloat(image.width) * scale))

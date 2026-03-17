@@ -31,12 +31,13 @@ final class ScrollingCaptureManager {
     private var lastHash: UInt64 = 0
     private var targetWidth: Int = 0
     private var duplicateCount: Int = 0
+    private var lastAcceptedShift: Int = 0
     /// Original captured strips (drawn once at delivery for max quality).
     private var capturedStrips: [(image: CGImage, height: Int)] = []
     private var totalStitchedHeight: Int = 0
 
     private let maxDuplicatesBeforeStop: Int = 8
-    private let duplicateHashThreshold: Int = 3
+    private let duplicateHashThreshold: Int = 5
 
 
 
@@ -50,6 +51,7 @@ final class ScrollingCaptureManager {
         lastHash = 0
         targetWidth = 0
         duplicateCount = 0
+        lastAcceptedShift = 0
         capturedStrips = []
         totalStitchedHeight = 0
         delegate?.hideScrollingCaptureShelf()
@@ -108,18 +110,35 @@ final class ScrollingCaptureManager {
             return
         }
 
-        // Check for near-duplicate (page bottom reached)
-        if let hash = averageHash(scaled),
-           hammingDistance(hash, lastHash) < duplicateHashThreshold,
-           shift < 12 {
+        let dynamicMinShift = max(12, min(28, lastAcceptedShift > 0 ? Int(CGFloat(lastAcceptedShift) * 0.6) : 18))
+        let minAppendShift = max(dynamicMinShift, Int(CGFloat(scaled.height) * 0.02))
+        let hash = averageHash(scaled)
+        let isNearDuplicate = hash.map { hammingDistance($0, lastHash) < duplicateHashThreshold } ?? false
+
+        // If the frame is nearly identical, update last frame to avoid reusing stale comparisons.
+        let duplicateShiftCutoff = max(12, minAppendShift)
+        if isNearDuplicate && shift < duplicateShiftCutoff {
             duplicateCount += 1
+            lastFrame = scaled
+            lastHash = hash ?? lastHash
+            if duplicateCount >= maxDuplicatesBeforeStop {
+                delegate?.didDetectScrollTooFast()
+            }
             return
-        } else {
-            duplicateCount = 0
+        }
+        if shift < minAppendShift {
+            // Small movement: update baseline but don't append to avoid duplicate strips.
+            lastFrame = scaled
+            lastHash = hash ?? lastHash
+            return
         }
 
         let overlap = scaled.height - shift
-        guard overlap >= 10, shift >= 20 else { return }
+        guard overlap >= 8 else {
+            lastFrame = scaled
+            lastHash = hash ?? lastHash
+            return
+        }
 
         // Extract the new content strip
         let newContentHeight = scaled.height - overlap
@@ -130,7 +149,9 @@ final class ScrollingCaptureManager {
         capturedStrips.append((image: newStrip, height: newContentHeight))
         totalStitchedHeight += newContentHeight
         lastFrame = scaled
-        lastHash = averageHash(scaled) ?? lastHash
+        lastHash = hash ?? lastHash
+        duplicateCount = 0
+        lastAcceptedShift = shift
 
         // Generate a quick preview
         if let preview = buildPreviewImage() {
