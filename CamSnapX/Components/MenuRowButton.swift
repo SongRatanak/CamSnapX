@@ -22,22 +22,25 @@ struct MenuRowButton: View {
 
     var body: some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .foregroundStyle(isHovering ? Color(nsColor: .selectedMenuItemTextColor) : Color(nsColor: .controlTextColor))
-                .padding(.vertical, 4)
-                .padding(.horizontal, 6)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(
-            Group {
-                if isHovering {
-                    SelectionBackground()
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                } else {
-                    Color.clear
-                }
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 18)
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer(minLength: 0)
             }
+            .foregroundStyle(isHovering ? Color.white : Color.white.opacity(0.9))
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isHovering ? Color.accentColor.opacity(0.5) : Color.clear)
         )
+        .contentShape(Rectangle())
         .onHover { hovering in
             isHovering = hovering
         }

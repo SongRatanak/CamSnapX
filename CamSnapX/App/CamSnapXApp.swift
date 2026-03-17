@@ -7,17 +7,23 @@
 
 import SwiftUI
 
+final class CamSnapXAppDelegate: NSObject, NSApplicationDelegate {
+    private var statusBarController: StatusBarController?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
+        ShortcutManager.shared.startMonitoring()
+        statusBarController = StatusBarController()
+    }
+}
+
 @main
 struct CamSnapXApp: App {
-    init() {
-        ShortcutManager.shared.startMonitoring()
-    }
+    @NSApplicationDelegateAdaptor(CamSnapXAppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        MenuBarExtra("CamSnapX", systemImage: "viewfinder") {
-            ContentView()
+        Settings {
+            EmptyView()
         }
-        .menuBarExtraStyle(.window)
-
     }
 }

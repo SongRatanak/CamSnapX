@@ -95,8 +95,10 @@ final class ShortcutManager {
                 return event
             }
         case .global:
-            globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
-                self?.handle(event)
+            if isAccessibilityTrusted() {
+                globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+                    self?.handle(event)
+                }
             }
             monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
                 self?.handle(event)
@@ -165,5 +167,9 @@ extension ShortcutManager {
         guard shortcutScope == .global else { return }
         let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
+    }
+
+    func isAccessibilityTrusted() -> Bool {
+        AXIsProcessTrusted()
     }
 }

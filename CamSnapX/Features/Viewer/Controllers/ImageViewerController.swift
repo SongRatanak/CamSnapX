@@ -697,6 +697,7 @@ private struct ZoomableScrollView<Content: View>: NSViewRepresentable {
 
         context.coordinator.attach(scrollView: scrollView, hostingView: hostingView)
         scrollView.magnification = zoomScale
+        context.coordinator.centerDocumentIfNeeded(in: scrollView)
         return scrollView
     }
 
@@ -707,6 +708,7 @@ private struct ZoomableScrollView<Content: View>: NSViewRepresentable {
             hostingView.frame = NSRect(origin: .zero, size: hostingView.fittingSize)
         }
         context.coordinator.applyZoomIfNeeded(to: nsView, targetZoom: zoomScale)
+        context.coordinator.centerDocumentIfNeeded(in: nsView)
     }
 
     final class Coordinator: NSObject {
@@ -748,6 +750,19 @@ private struct ZoomableScrollView<Content: View>: NSViewRepresentable {
             isApplyingFromSwiftUI = true
             scrollView.setMagnification(targetZoom, centeredAt: center)
             isApplyingFromSwiftUI = false
+        }
+
+        func centerDocumentIfNeeded(in scrollView: NSScrollView) {
+            guard let documentView = scrollView.documentView else { return }
+            let clipSize = scrollView.contentView.bounds.size
+            var frame = documentView.frame
+            let centeredX = max(0, (clipSize.width - frame.size.width) / 2)
+            let centeredY = max(0, (clipSize.height - frame.size.height) / 2)
+            let newOrigin = NSPoint(x: centeredX, y: centeredY)
+            if frame.origin != newOrigin {
+                frame.origin = newOrigin
+                documentView.frame = frame
+            }
         }
 
         @objc private func handleLiveMagnify() {

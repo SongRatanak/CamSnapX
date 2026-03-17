@@ -32,6 +32,7 @@ struct SettingsPanelView: View {
     @State private var recordingAction: ShortcutAction? = nil
     @State private var recordingMonitor: Any? = nil
     @AppStorage("shortcut.scope") private var shortcutScopeRaw = ShortcutScope.appOnly.rawValue
+    @State private var isAccessibilityTrusted = ShortcutManager.shared.isAccessibilityTrusted()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -278,6 +279,13 @@ struct SettingsPanelView: View {
                         .pickerStyle(.segmented)
                         .frame(width: 180)
                     }
+                    if shortcutScopeRaw == ShortcutScope.global.rawValue && !isAccessibilityTrusted {
+                        settingsRow("Accessibility") {
+                            Text("Enable Accessibility to use global shortcuts.")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                     settingsRow("Accessibility") {
                         Button("Open System Settings") {
                             openAccessibilitySettings()
@@ -309,6 +317,10 @@ struct SettingsPanelView: View {
         .onChange(of: shortcutScopeRaw) { _ in
             ShortcutManager.shared.requestAccessibilityIfNeeded()
             ShortcutManager.shared.updateMonitoring()
+            isAccessibilityTrusted = ShortcutManager.shared.isAccessibilityTrusted()
+        }
+        .onAppear {
+            isAccessibilityTrusted = ShortcutManager.shared.isAccessibilityTrusted()
         }
     }
 

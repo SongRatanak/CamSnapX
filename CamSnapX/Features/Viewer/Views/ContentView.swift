@@ -16,17 +16,20 @@ struct ContentView: View {
     @State private var draggedImage: NSImage? = nil
     @State private var isDragOver = false
     @State private var hasPreviousArea = CaptureAreaController.shared.hasPreviousArea
+    @State private var wasActive = false
 
     var body: some View {
         ZStack {
+            VisualEffectBlurView(material: .hudWindow, blendingMode: .withinWindow)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.ultraThinMaterial)
+                .fill(Color.black.opacity(0.35))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(isDragOver ? Color.blue.opacity(0.8) : Color.white.opacity(0.15), lineWidth: isDragOver ? 3 : 1)
+                        .stroke(isDragOver ? Color.blue.opacity(0.85) : Color.white.opacity(0.12), lineWidth: isDragOver ? 3 : 1)
                 )
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
                 Button("Close") {
                     dismiss()
                 }
@@ -62,12 +65,12 @@ struct ContentView: View {
                 }
                 MenuRowButton("Capture Text (OCR)", systemImage: "text.viewfinder") { }
                 MenuRowButton("Record Screen", systemImage: "record.circle") { }
-                Divider()
+                menuDivider
                 MenuRowButton("Hide Desktop Icons", systemImage: "eye.slash") { }
-                Divider()
+                menuDivider
                 MenuRowButton("Open...", systemImage: "folder") { }
                 MenuRowButton("Pin to the Screen...", systemImage: "pin") { }
-                Divider()
+                menuDivider
                 MenuRowButton("Capture History...", systemImage: "clock.arrow.circlepath") {
                     CaptureHistoryPanelController.shared.show(store: historyStore)
                     dismiss()
@@ -81,23 +84,16 @@ struct ContentView: View {
                     SettingsPanelController.shared.show(tab: .general)
                     dismiss()
                 }
-                Divider()
+                menuDivider
                 MenuRowButton("Quit", systemImage: "power") {
                     NSApplication.shared.terminate(nil)
                 }
             }
             .buttonStyle(.borderless)
-            .padding(10)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
         }
-        .frame(width: 220)
-        .onExitCommand {
-            dismiss()
-        }
-        .onChange(of: controlActiveState) { newValue in
-            if newValue == .inactive {
-                dismiss()
-            }
-        }
+        .frame(width: 240)
         .onAppear {
             hasPreviousArea = CaptureAreaController.shared.hasPreviousArea
         }
@@ -116,6 +112,14 @@ struct ContentView: View {
                 }
             }
         )
+    }
+
+    private var menuDivider: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.14))
+            .frame(height: 1)
+            .padding(.vertical, 2)
+            .padding(.horizontal, 2)
     }
 
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
